@@ -37,7 +37,8 @@ class FrequentationProcessController extends Controller
                     'role'          => $request->role,
                     'heur_debut'    => $request->heur_debut,
                     'heur_fin'      => $request->heur_fin,
-                    'date'          => $request->date
+                    'date'          => $request->date,
+                    'nb_participants' => $request->nb_participants,
                 ]);
 
                 return $frequentation;
@@ -84,7 +85,7 @@ class FrequentationProcessController extends Controller
                 'projet_id'            => $f->project_id,
                 'heur_debut'           => $f->heur_debut,
                 'heur_fin'             => $f->heur_fin,
-                'nb_participants'      => $allParticipants->count(),
+                'nb_participants'      => $f->nb_participants ?? $allParticipants->count(),
             ];
         });
 
@@ -117,6 +118,7 @@ class FrequentationProcessController extends Controller
                     'role'          => $request->role,
                     'heur_debut'    => $request->heur_debut,
                     'heur_fin'      => $request->heur_fin,
+                    'nb_participants' => $request->nb_participants,
                 ]);
             });
 

@@ -17,6 +17,7 @@ class Frequentation extends Model
         'heur_debut',
         'heur_fin',
         'date',
+        'nb_participants',
     ];
 
     // Une fréquentation a plusieurs occupations

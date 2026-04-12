@@ -4,9 +4,14 @@ import axios from 'axios';
 import ExcelTable from "../components/ExcelTable";
 import AddRowModal from "../components/form";
 import TableSkeleton from "../components/TableSkeleton";
+import TableEmpty from "../components/TableEmpty";
 import TableError from "../components/TableError";
 import Toast from "../components/Toast";
 import { POLES } from '../constants/poles';
+import { useDirtyTracker } from '../context/DirtyTrackerContext';
+import { useNavigationGuard } from '../hooks/useNavigationGuard';
+import { useBeforeUnload } from '../hooks/useBeforeUnload';
+import ConfirmLeaveModal from '../components/ConfirmLeaveModal';
 
 const api = axios.create({
     baseURL: import.meta.env.VITE_API_URL,
@@ -24,6 +29,10 @@ function Frequentations() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [toast, setToast] = useState({ msg: "", visible: false });
+
+    const { setDirty } = useDirtyTracker();
+    const { showLeaveModal, confirmLeave, cancelLeave } = useNavigationGuard('frequentations');
+    useBeforeUnload('frequentations');
 
     // Colonnes aplaties depuis frequentation + activite + occupation
     const COLUMNS = [
@@ -159,6 +168,7 @@ function Frequentations() {
         { key: "role", label: "Rôle", required: false },
         { key: "heur_debut", label: "Heure début", required: false, type: 'time' },
         { key: "heur_fin", label: "Heure fin", required: false, type: 'time' },
+        { key: "nb_participants", label: "Nombre des participants", required: false, type: 'number' },
     ];
 
     const onSave = async (modifiedRows) => {
@@ -174,6 +184,7 @@ function Frequentations() {
                         heur_debut: row.heur_debut,
                         heur_fin: row.heur_fin,
                         date: row.date,
+                        nb_participants: row.nb_participants,
                         activite: {
                             nom: row.activite_nom,
                             pole: row.activite_pole,
@@ -182,7 +193,7 @@ function Frequentations() {
                         },
                         participants: Array.isArray(row.participants) ? row.participants : [],
                     };
-                    
+
                     // Si c'est une nouvelle ligne (dupliquée), faire un POST
                     if (row._is_new) {
                         return api.post("/frequentations/process", payload);
@@ -192,6 +203,7 @@ function Frequentations() {
                 })
             );
             showToast(`✓ ${modifiedRows.length} modification(s) sauvegardée(s)`);
+            setDirty('frequentations', false);
             await refetchData();
         } catch (err) {
             const errorMsg = err.response?.data?.message || "Erreur lors de la sauvegarde";
@@ -218,10 +230,12 @@ function Frequentations() {
                     filiere: data.activite_filiere || projectForActivite?.filiere || '',
                     groupe: data.activite_groupe || projectForActivite?.groupe || '',
                 },
+                nb_participants: data.nb_participants,
             };
 
             await api.post("/frequentations/process", payload);
             showToast("✓ Fréquentation ajoutée avec succès");
+            setDirty('frequentations', false);
             setIsModalOpen(false);
             await refetchData();
         } catch (err) {
@@ -243,12 +257,19 @@ function Frequentations() {
                 ids.map(id => api.delete(`/frequentations/process/${id}`))
             );
             showToast(`✓ ${ids.length} fréquentation(s) supprimée(s)`);
+            setDirty('frequentations', false);
             await refetchData();
         } catch (err) {
             const errorMsg = err.response?.data?.message || "Erreur lors de la suppression";
             showToast(`❌ ${errorMsg}`);
             console.error("Erreur delete:", err);
         }
+    };
+
+
+    const setFrequentationFormData = (updater) => {
+        setDirty('frequentations', true);
+        setFormData((prev) => (typeof updater === 'function' ? updater(prev) : updater));
     };
 
     const activeSessions = frequentations.filter(f => !f.heur_fin);
@@ -270,6 +291,7 @@ function Frequentations() {
                 },
             });
             showToast("✓ Session terminée");
+            setDirty('frequentations', false);
             await refetchData();
         } catch (err) {
             const errorMsg = err.response?.data?.message || "Erreur lors de la terminaison de la session";
@@ -305,6 +327,14 @@ function Frequentations() {
 
         return null;
     }, [searchParams, frequentations]);
+
+    if (loading) {
+        return <TableSkeleton columns={12} rows={8} />;
+    }
+
+    if (error) {
+        return <TableError message={error} onRetry={refetchData} />;
+    }
 
     return (
         <>
@@ -343,34 +373,30 @@ function Frequentations() {
                     )}
                 </div>
             )}
-            {loading ? (
-                <TableSkeleton columns={COLUMNS.length} rows={8} />
-            ) : error ? (
-                <TableError message={error} onRetry={refetchData} />
-            ) : (
-                <>
-                    <ExcelTable
-                        data={frequentations}
-                        columns={COLUMNS}
-                        onDelete={onDelete}
-                        onSave={onSave}
-                        addRow={() => setIsModalOpen(true)}
-                        getRowClassName={(row) => !row.heur_fin ? 'row-orange-light' : ''}
-                        initialFilters={initialFilters}
-                        onDuplicate={true}
-                        emptyMessage="Aucune fréquentation enregistrée."
-                    />
-                    <AddRowModal
-                        isOpen={isModalOpen}
-                        onClose={() => setIsModalOpen(false)}
-                        onSubmit={handleAddSubmit}
-                        title="Ajouter une Nouvelle Fréquentation"
-                        fields={finalFields}
-                        externalFormData={formData}
-                        setExternalFormData={setFormData}
-                    />
-                </>
-            )}
+
+            <ExcelTable
+                data={frequentations}
+                columns={COLUMNS}
+                onDelete={onDelete}
+                onSave={onSave}
+                addRow={() => setIsModalOpen(true)}
+                getRowClassName={(row) => !row.heur_fin ? 'row-orange-light' : ''}
+                initialFilters={initialFilters}
+                onDirtyChange={(dirty) => setDirty('frequentations', dirty)}
+                onDuplicate={true}
+                emptyMessage="Aucune fréquentation enregistrée."
+            />
+
+            <AddRowModal
+                isOpen={isModalOpen}
+                onClose={() => { setIsModalOpen(false); setDirty('frequentations', false); }}
+                onSubmit={handleAddSubmit}
+                title="Ajouter une Nouvelle Fréquentation"
+                fields={finalFields}
+                externalFormData={formData}
+                setExternalFormData={setFrequentationFormData}
+            />
+            <ConfirmLeaveModal isOpen={showLeaveModal} onConfirm={confirmLeave} onCancel={cancelLeave} />
             <Toast msg={toast.msg} visible={toast.visible} />
         </>
     );

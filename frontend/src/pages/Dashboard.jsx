@@ -739,7 +739,7 @@ function Dashboard() {
     if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Chargement du Dashboard...</div>;
 
     return (
-        <div style={{ padding: '30px', background: '#f0f4f8', height: '100%', fontFamily: 'Inter, system-ui, sans-serif', overflowY: 'auto', overflowX: 'hidden' }}>
+        <div style={{ padding: '30px', background: '#f0f4f8', flex: 1, fontFamily: 'Inter, system-ui, sans-serif', overflowY: 'auto' }}>
             <h1 style={{ marginBottom: '30px', color: '#1a365d', fontSize: '28px', fontWeight: '800' }}>Dashboard Analytique</h1>
 
             {/* KPI Cards */}
