@@ -72,8 +72,13 @@ function Occupation() {
             const frequentationsData = Array.isArray(frequentationsRes.data) ? frequentationsRes.data : [];
             setFrequentations(frequentationsData);
             setRows(mapFrequentationsToOccupations(frequentationsData));
-            setZoneOccupees(Array.isArray(zonesRes.data) ? zonesRes.data : []);
-            setOutillages(Array.isArray(outillagesRes.data) ? outillagesRes.data : []);
+
+            // Ensure unique names for datalists
+            const zoData = Array.isArray(zonesRes.data) ? zonesRes.data : [];
+            setZoneOccupees(Array.from(new Map(zoData.map(z => [z.name, z])).values()));
+
+            const outData = Array.isArray(outillagesRes.data) ? outillagesRes.data : [];
+            setOutillages(Array.from(new Map(outData.map(o => [o.name, o])).values()));
         } catch (err) {
             const errorMsg = err.response?.data?.message || err.message || "Erreur de chargement des occupations";
             setError(errorMsg);

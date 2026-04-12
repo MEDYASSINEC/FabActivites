@@ -149,48 +149,48 @@ export default function ExcelTable({ data, columns, onDelete, onSave, addRow, ge
     const duplicateSelected = () => {
         if (selRows.size === 0) { showToast("Aucune ligne sélectionnée"); return; }
         if (!onDuplicate) { showToast("Duplication non disponible"); return; }
-        
+
         const now = new Date();
         const currentTime = now.toTimeString().split(' ')[0].substring(0, 5); // HH:MM
-        
+
         const newRows = [];
         selRows.forEach(id => {
             const originalRow = dataRows.find(r => r.id === id);
             if (!originalRow) return;
-            
+
             // Créer une copie avec des données modifiées
             const newId = `new-${Date.now()}-${Math.random()}`; // ID temporaire unique
             const newCells = [...originalRow.cells];
-            
+
             // Trouver les indices pour heur_debut et heur_fin
             const heurDebutIdx = columns.findIndex(c => c.key === 'heur_debut') + 1;
             const heurFinIdx = columns.findIndex(c => c.key === 'heur_fin') + 1;
-            
+
             // Modifier les cellules
             if (heurDebutIdx > 0) newCells[heurDebutIdx] = currentTime;
             if (heurFinIdx > 0) newCells[heurFinIdx] = '';
-            
+
             // Créer le nouvel objet brut
             const newRaw = { ...originalRow._raw };
             newRaw._is_new = true; // Flag pour indiquer que c'est une nouvelle ligne
             newRaw.heur_debut = currentTime;
             newRaw.heur_fin = '';
             delete newRaw.id; // supprimer l'id pour créer un nouvel enregistrement
-            
+
             newRows.push({
                 id: newId,
                 cells: newCells,
                 _raw: newRaw,
             });
         });
-        
+
         setDataRows(prev => [...prev, ...newRows]);
-        
+
         // Tracker les nouvelles lignes comme changements
         newRows.forEach(row => {
             setPendingChanges(prev => new Map(prev).set(row.id, row._raw));
         });
-        
+
         showToast(`${newRows.length} ligne${newRows.length > 1 ? "s" : ""} dupliquée${newRows.length > 1 ? "s" : ""}`);
     };
 
@@ -496,7 +496,7 @@ export default function ExcelTable({ data, columns, onDelete, onSave, addRow, ge
                                                     background: isSel && !isEditing ? "#e6f3f9" : isRowSel ? "#cce8f4" : ri % 2 === 1 ? "#f5fbfd" : "#fff",
                                                     outline: isSel && !isEditing ? "2px solid #2B9CB8" : undefined,
                                                     outlineOffset: isSel ? -2 : undefined,
-                                                    textAlign: ci >= 2 && ci <= 6 ? "right" : ci === 7 ? "right" : "left",
+                                                    textAlign: "left",
                                                     fontWeight: isPct ? 600 : 400,
                                                     color: isNeg ? "#c0392b" : isPos ? "#27ae60" : isPct ? "#0061AA" : undefined,
                                                 }}

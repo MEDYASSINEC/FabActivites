@@ -30,7 +30,7 @@ function Frequentations() {
     const COLUMNS = [
         // ── Fréquentation ──
         { key: "date", label: "Date", type: 'date' },
-        { key: "type_activite", label: "Type activité", type: 'datalist', options: typeActivites.map(t => t.name) },
+        { key: "type_activite", label: "Type activité", type: 'select', options: typeActivites.map(t => ({ value: t.name, label: t.name })) },
         { key: "activite_nom", label: "Projet/Activité" },
         { key: "etape", label: "Etape/Séance" },
         { key: "intervenant", label: "Intervenant/Résponsable" },
@@ -38,10 +38,9 @@ function Frequentations() {
         { key: "activite_pole", label: "Pôle", type: 'datalist', options: POLES },
         { key: "activite_filiere", label: "Filière" },
         { key: "activite_groupe", label: "Groupe" },
-        { key: "zone_occupee", label: "Zone occupée", type: 'datalist', options: zoneOccupees.map(z => z.name) },
-        { key: "outillage_machine", label: "Outillage", type: 'datalist', options: outillages.map(o => o.name) },
         { key: "heur_debut", label: "Heure début", type: 'time' },
         { key: "heur_fin", label: "Heure fin", type: 'time' },
+        { key: "nb_participants", label: "Nombre des participants" },
     ];
 
     useEffect(() => {
@@ -51,19 +50,15 @@ function Frequentations() {
             setLoading(true);
             setError(null);
             try {
-                const [frequentationsRes, projectsRes, taRes, zoRes, outRes] = await Promise.all([
+                const [frequentationsRes, projectsRes, taRes] = await Promise.all([
                     api.get("/frequentations/process", { signal: controller.signal }),
                     api.get("/projects", { signal: controller.signal }),
                     api.get("/type-activites", { signal: controller.signal }),
-                    api.get("/zone-occupees", { signal: controller.signal }),
-                    api.get("/outillages", { signal: controller.signal }),
                 ]);
                 console.log("Fréquentations reçues:", frequentationsRes.data);
                 setFrequentations(Array.isArray(frequentationsRes.data) ? frequentationsRes.data : frequentationsRes.data.data || []);
                 setProjects(Array.isArray(projectsRes.data) ? projectsRes.data : projectsRes.data.data || []);
                 setTypeActivites(Array.isArray(taRes.data) ? taRes.data : taRes.data.data || []);
-                setZoneOccupees(Array.isArray(zoRes.data) ? zoRes.data : zoRes.data.data || []);
-                setOutillages(Array.isArray(outRes.data) ? outRes.data : outRes.data.data || []);
             } catch (err) {
                 if (err.code === 'ERR_CANCELED') return;
                 const errorMsg = err.response?.data?.message || err.message || "Erreur de chargement des données";
@@ -88,18 +83,14 @@ function Frequentations() {
         setLoading(true);
         setError(null);
         try {
-            const [frequentationsRes, projectsRes, taRes, zoRes, outRes] = await Promise.all([
+            const [frequentationsRes, projectsRes, taRes] = await Promise.all([
                 api.get("/frequentations/process"),
                 api.get("/projects"),
                 api.get("/type-activites"),
-                api.get("/zone-occupees"),
-                api.get("/outillages"),
             ]);
             setFrequentations(Array.isArray(frequentationsRes.data) ? frequentationsRes.data : frequentationsRes.data.data || []);
             setProjects(Array.isArray(projectsRes.data) ? projectsRes.data : projectsRes.data.data || []);
             setTypeActivites(Array.isArray(taRes.data) ? taRes.data : taRes.data.data || []);
-            setZoneOccupees(Array.isArray(zoRes.data) ? zoRes.data : zoRes.data.data || []);
-            setOutillages(Array.isArray(outRes.data) ? outRes.data : outRes.data.data || []);
         } catch (err) {
             const errorMsg = err.response?.data?.message || err.message || "Erreur de chargement";
             setError(errorMsg);
@@ -147,13 +138,12 @@ function Frequentations() {
         }
     }, [formData.activite_nom]);
 
-    const isAutre = formData.activite_nom === 'autre';
     const isProjectSelected = formData.activite_nom && formData.activite_nom !== 'autre' && !isNaN(formData.activite_nom);
     const FREQUENTATION_FIELDS = [
         { key: "date", label: "Date", required: false, type: 'date' },
         {
-            key: "type_activite", label: "Type activité", required: false, type: 'datalist',
-            options: typeActivites.map(t => t.name)
+            key: "type_activite", label: "Type activité", required: false, type: 'select',
+            options: typeActivites.map(t => ({ value: t.name, label: t.name }))
         },
         {
             key: "activite_nom", label: "Projet / Activité", required: false, type: 'select',
@@ -191,6 +181,7 @@ function Frequentations() {
                             filiere: row.activite_filiere,
                             groupe: row.activite_groupe,
                         },
+                        participants: Array.isArray(row.participants) ? row.participants : [],
                     };
                     
                     // Si c'est une nouvelle ligne (dupliquée), faire un POST
