@@ -9,6 +9,7 @@ use App\Http\Controllers\TypeActiviteController;
 use App\Http\Controllers\ZoneOccupeeController;
 use App\Http\Controllers\OutillageController;
 use App\Http\Controllers\ExcelImportController;
+use App\Http\Controllers\DashboardController;
 use Illuminate\Support\Facades\Route;
 
 
@@ -30,3 +31,16 @@ Route::apiResource('frequentations', FrequentationController::class);
 Route::apiResource('type-activites', TypeActiviteController::class);
 Route::apiResource('zone-occupees', ZoneOccupeeController::class);
 Route::apiResource('outillages', OutillageController::class);
+
+
+Route::prefix('dashboard')->group(function () {
+    Route::get('/projets/statuts-annee', [DashboardController::class, 'projetsStatutsAnnee']);
+    Route::get('/beneficiaires', [DashboardController::class, 'beneficiaires']);
+    Route::get('/formations', [DashboardController::class, 'formations']);
+    Route::get('/beneficiaires/mois', [DashboardController::class, 'beneficiairesMois']);
+    Route::get('/projets/statuts', [DashboardController::class, 'projetsStatuts']);
+    Route::get('/seances', [DashboardController::class, 'seances']);
+    Route::get('/frequentations/mois', [DashboardController::class, 'frequentationsMois']);
+    Route::get('/occupations/mois', [DashboardController::class, 'occupationsMois']);
+    Route::get('/outillages/mois', [DashboardController::class, 'outillagesMois']);
+});
