@@ -6,6 +6,10 @@ import TableSkeleton from "../components/TableSkeleton";
 import TableEmpty from "../components/TableEmpty";
 import TableError from "../components/TableError";
 import Toast from "../components/Toast";
+import { useDirtyTracker } from '../context/DirtyTrackerContext';
+import { useNavigationGuard } from '../hooks/useNavigationGuard';
+import { useBeforeUnload } from '../hooks/useBeforeUnload';
+import ConfirmLeaveModal from '../components/ConfirmLeaveModal';
 
 const api = axios.create({
     baseURL: import.meta.env.VITE_API_URL,
@@ -32,6 +36,10 @@ function Occupation() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [toast, setToast] = useState({ msg: "", visible: false });
+
+    const { setDirty } = useDirtyTracker();
+    const { showLeaveModal, confirmLeave, cancelLeave } = useNavigationGuard('occupations');
+    useBeforeUnload('occupations');
 
     const showToast = (msg) => {
         setToast({ msg, visible: true });
@@ -158,6 +166,11 @@ function Occupation() {
         { key: "heur_fin", label: "Heure fin", required: false, type: "time" },
     ];
 
+    const setOccupationFormData = (updater) => {
+        setDirty('occupations', true);
+        setFormData((prev) => (typeof updater === 'function' ? updater(prev) : updater));
+    };
+
     const onSave = async (modifiedRows) => {
         try {
             await Promise.all(modifiedRows.map((row) => {
@@ -178,6 +191,7 @@ function Occupation() {
             }));
 
             showToast(`✓ ${modifiedRows.length} occupation(s) sauvegardée(s)`);
+            setDirty('occupations', false);
             await refetchData();
         } catch (err) {
             const errorMsg = err.response?.data?.message || "Erreur lors de la sauvegarde";
@@ -189,6 +203,7 @@ function Occupation() {
         try {
             await Promise.all(ids.map(id => api.delete(`/occupations/${id}`)));
             showToast(`✓ ${ids.length} occupation(s) supprimée(s)`);
+            setDirty('occupations', false);
             await refetchData();
         } catch (err) {
             const errorMsg = err.response?.data?.message || "Erreur lors de la suppression";
@@ -207,6 +222,7 @@ function Occupation() {
                 participants: data.participants || [],
             });
             showToast("✓ Occupation ajoutée avec succès");
+            setDirty('occupations', false);
             setIsModalOpen(false);
             await refetchData();
         } catch (err) {
@@ -243,19 +259,21 @@ function Occupation() {
                     onSave={onSave}
                     addRow={() => setIsModalOpen(true)}
                     onDuplicate={true}
+                    onDirtyChange={(dirty) => setDirty('occupations', dirty)}
                 />
             )}
 
             <AddRowModal
                 isOpen={isModalOpen}
-                onClose={() => setIsModalOpen(false)}
+                onClose={() => { setIsModalOpen(false); setDirty('occupations', false); }}
                 onSubmit={handleAddSubmit}
                 title="Ajouter une nouvelle occupation"
                 fields={occupationFields}
                 externalFormData={formData}
-                setExternalFormData={setFormData}
+                setExternalFormData={setOccupationFormData}
             />
 
+            <ConfirmLeaveModal isOpen={showLeaveModal} onConfirm={confirmLeave} onCancel={cancelLeave} />
             <Toast msg={toast.msg} visible={toast.visible} />
         </>
     );

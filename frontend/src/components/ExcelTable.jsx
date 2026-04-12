@@ -11,7 +11,7 @@ function parseNum(s) {
 
 
 // ── Main Component ────────────────────────────────────────────
-export default function ExcelTable({ data, columns, onDelete, onSave, addRow, getRowClassName, initialFilters, onDuplicate }) {
+export default function ExcelTable({ data, columns, onDelete, onSave, addRow, getRowClassName, initialFilters, onDuplicate, onDirtyChange }) {
     const rowFromApi = useCallback((obj) => ({
         id: obj.id,
         cells: ["", ...columns.map(c => obj[c.key] ?? "")],
@@ -257,6 +257,11 @@ export default function ExcelTable({ data, columns, onDelete, onSave, addRow, ge
     useEffect(() => {
         setDataRows(data.map(rowFromApi));
     }, [data]);
+
+    useEffect(() => {
+        if (!onDirtyChange) return;
+        onDirtyChange(pendingChanges.size > 0 || pendingDeletes.size > 0);
+    }, [onDirtyChange, pendingChanges, pendingDeletes]);
 
     // ── Apply initial filters from URL params ──
     useEffect(() => {

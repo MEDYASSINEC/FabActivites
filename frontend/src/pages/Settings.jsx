@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import AccordionItem from '../components/AccordionItem';
+import { useDirtyTracker } from '../context/DirtyTrackerContext';
+import { useNavigationGuard } from '../hooks/useNavigationGuard';
+import { useBeforeUnload } from '../hooks/useBeforeUnload';
+import ConfirmLeaveModal from '../components/ConfirmLeaveModal';
 
 const api = axios.create({ baseURL: import.meta.env.VITE_API_URL });
 
-function CrudSection({ title, endpoint }) {
+function CrudSection({ title, endpoint, onDirty }) {
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [newItemName, setNewItemName] = useState('');
@@ -30,6 +34,7 @@ function CrudSection({ title, endpoint }) {
         try {
             await api.post(endpoint, { name: newItemName });
             setNewItemName('');
+            onDirty(false);
             fetchItems();
         } catch (err) { console.error(err); }
     };
@@ -38,6 +43,7 @@ function CrudSection({ title, endpoint }) {
         if (!window.confirm('Êtes-vous sûr de vouloir supprimer cet élément ?')) return;
         try {
             await api.delete(`${endpoint}/${id}`);
+            onDirty(false);
             fetchItems();
         } catch (err) { console.error(err); }
     };
@@ -48,6 +54,7 @@ function CrudSection({ title, endpoint }) {
         try {
             await api.put(`${endpoint}/${editingItem.id}`, { name: editingItem.name });
             setEditingItem(null);
+            onDirty(false);
             fetchItems();
         } catch (err) { console.error(err); }
     };
@@ -60,7 +67,7 @@ function CrudSection({ title, endpoint }) {
                     type="text" 
                     placeholder={`Ajouter ${title.toLowerCase()}...`}
                     value={newItemName}
-                    onChange={(e) => setNewItemName(e.target.value)}
+                    onChange={(e) => { setNewItemName(e.target.value); onDirty(true); }}
                     style={{ flex: 1, padding: '8px 12px', border: '1px solid #ccc', borderRadius: '4px' }}
                 />
                 <button type="submit" style={{ padding: '8px 16px', background: '#0061AA', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Ajouter</button>
@@ -79,7 +86,7 @@ function CrudSection({ title, endpoint }) {
                                     <input 
                                         type="text" 
                                         value={editingItem.name} 
-                                        onChange={(e) => setEditingItem({ ...editingItem, name: e.target.value })}
+                                        onChange={(e) => { setEditingItem({ ...editingItem, name: e.target.value }); onDirty(true); }}
                                         style={{ flex: 1, padding: '6px 8px', border: '1px solid #aaa', borderRadius: '4px' }}
                                         autoFocus
                                     />
@@ -90,7 +97,7 @@ function CrudSection({ title, endpoint }) {
                                 <>
                                     <span style={{ fontSize: '14px', color: '#333', fontWeight: '500' }}>{item.name}</span>
                                     <div style={{ display: 'flex', gap: '6px' }}>
-                                        <button onClick={() => setEditingItem(item)} style={{ background: 'rgba(0, 97, 170, 0.1)', border: 'none', color: '#0061AA', cursor: 'pointer', padding: '6px 10px', borderRadius: '4px', fontSize: '12px', fontWeight: '600' }}>Modifier</button>
+                                        <button onClick={() => { setEditingItem(item); onDirty(true); }} style={{ background: 'rgba(0, 97, 170, 0.1)', border: 'none', color: '#0061AA', cursor: 'pointer', padding: '6px 10px', borderRadius: '4px', fontSize: '12px', fontWeight: '600' }}>Modifier</button>
                                         <button onClick={() => handleDelete(item.id)} style={{ background: 'rgba(220, 53, 69, 0.1)', border: 'none', color: '#dc3545', cursor: 'pointer', padding: '6px 10px', borderRadius: '4px', fontSize: '12px', fontWeight: '600' }}>Supprimer</button>
                                     </div>
                                 </>
@@ -103,7 +110,7 @@ function CrudSection({ title, endpoint }) {
     );
 }
 
-function ImportSection() {
+function ImportSection({ onDirty }) {
     const [projectFile, setProjectFile] = useState(null);
     const [frequentationFile, setFrequentationFile] = useState(null);
     const [loading, setLoading] = useState({ projects: false, frequentations: false });
@@ -125,6 +132,7 @@ function ImportSection() {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             setStatus(prev => ({ ...prev, [type]: `✓ ${res.data.message}` }));
+            onDirty(false);
         } catch (err) {
             console.error(err);
             const msg = err.response?.data?.message || err.message || "Erreur lors de l'import";
@@ -163,7 +171,7 @@ function ImportSection() {
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '5px' }}>
                     <input 
                         type="file" 
-                        onChange={(e) => setProjectFile(e.target.files[0])}
+                        onChange={(e) => { setProjectFile(e.target.files[0]); onDirty(true); }}
                         style={{ fontSize: '12px', flex: 1 }}
                         accept=".xlsx, .xls, .csv"
                     />
@@ -195,7 +203,7 @@ function ImportSection() {
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '5px' }}>
                     <input 
                         type="file" 
-                        onChange={(e) => setFrequentationFile(e.target.files[0])}
+                        onChange={(e) => { setFrequentationFile(e.target.files[0]); onDirty(true); }}
                         style={{ fontSize: '12px', flex: 1 }}
                         accept=".xlsx, .xls, .csv"
                     />
@@ -229,6 +237,10 @@ function ImportSection() {
 
 
 function Settings() {
+    const { setDirty } = useDirtyTracker();
+    const { showLeaveModal, confirmLeave, cancelLeave } = useNavigationGuard('settings');
+    useBeforeUnload('settings');
+
     return (
         <div style={{ width: "100%", overflow: 'scroll' }} >
             <div style={{ padding: '30px', maxWidth: '1200px', margin: '0 auto'}}>
@@ -244,12 +256,13 @@ function Settings() {
                     padding: "1rem 0",
                     gap: "8px"
                     }}>
-                    <AccordionItem title="Types d'Activité" content={<CrudSection title="Types d'Activité" endpoint="/type-activites" />} />
-                    <AccordionItem title="Zones Occupées" content={<CrudSection title="Zones Occupées" endpoint="/zone-occupees" />} />
-                    <AccordionItem title="Outillage / Machine" content={<CrudSection title="Outillage / Machine" endpoint="/outillages" />} />
-                    <AccordionItem title="Import de données (Excel)" content={<ImportSection />} />
+                    <AccordionItem title="Types d'Activité" content={<CrudSection title="Types d'Activité" endpoint="/type-activites" onDirty={(dirty) => setDirty('settings', dirty)} />} />
+                    <AccordionItem title="Zones Occupées" content={<CrudSection title="Zones Occupées" endpoint="/zone-occupees" onDirty={(dirty) => setDirty('settings', dirty)} />} />
+                    <AccordionItem title="Outillage / Machine" content={<CrudSection title="Outillage / Machine" endpoint="/outillages" onDirty={(dirty) => setDirty('settings', dirty)} />} />
+                    <AccordionItem title="Import de données (Excel)" content={<ImportSection onDirty={(dirty) => setDirty('settings', dirty)} />} />
                 </div>
             </div>
+            <ConfirmLeaveModal isOpen={showLeaveModal} onConfirm={confirmLeave} onCancel={cancelLeave} />
         </div>
     );
 }
