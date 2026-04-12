@@ -22,6 +22,8 @@ class DatabaseSeeder extends Seeder
                 ActiviteSeeder::class,
                 OccupationSeeder::class,
                 FrequentationSeeder::class,
+                ZoneOccupeeSeeder::class,
+                OutillageSeeder::class,
             ]);
         User::factory()->create([
             'name' => 'Test User',

@@ -5,6 +5,9 @@ import axios from 'axios';
 import AddRowModal from "../components/form";
 import TableSkeleton from "../components/TableSkeleton";
 import TableEmpty from "../components/TableEmpty";
+import TableError from "../components/TableError";
+import Toast from "../components/Toast";
+import { POLES } from '../constants/poles';
 
 // instance axios avec baseURL propre
 const api = axios.create({
@@ -16,15 +19,17 @@ function Projects() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [searchParams] = useSearchParams();
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [toast, setToast] = useState({ msg: "", visible: false });
 
     const COLUMNS = [
         { key: "intitule_projet", label: "Intitulé projet" },
         { key: "source_du_projet", label: "Source" },
-        { key: "pole", label: "Pôle" },
+        { key: "pole", label: "Pôle", type: 'datalist', options: POLES },
         { key: "filiere", label: "Filière" },
         { key: "groupe", label: "Groupe" },
         { key: "responsable_projet", label: "Responsable" },
-        { key: "statut", label: "Statut" },
+        { key: "statut", label: "Statut", type: 'datalist', options: ['En cours', 'Terminé', 'Suspendu', 'Abandonné'] },
         { key: "etape", label: "Étape" },
         { key: "participants", label: "Participants" },
         { key: "dt_debut", label: "Début", type: 'date' },
@@ -35,11 +40,11 @@ function Projects() {
     const PROJECT_FIELDS = [
         { key: "intitule_projet", label: "Intitulé projet", required: true },
         { key: "source_du_projet", label: "Source", required: true },
-        { key: "pole", label: "Pôle", required: true },
+        { key: "pole", label: "Pôle", required: true, type: 'datalist', options: POLES },
         { key: "filiere", label: "Filière", required: true },
         { key: "groupe", label: "Groupe", required: true },
         { key: "responsable_projet", label: "Responsable", required: true },
-        { key: "statut", label: "Statut", required: true, type: 'select', options: ['En cours', 'Terminé', 'Suspendu', 'Abandonné'] },
+        { key: "statut", label: "Statut", required: true, type: 'datalist', options: ['En cours', 'Terminé', 'Suspendu', 'Abandonné'] },
         { key: "etape", label: "Étape", required: true },
         { key: "participants", label: "Participants", required: true, type: 'list' },
         { key: "dt_debut", label: "Date début", required: true, type: 'date' },
@@ -50,13 +55,17 @@ function Projects() {
         const controller = new AbortController();
 
         const fetchProjects = async () => {
+            setLoading(true);
+            setError(null);
             try {
                 const res = await api.get("/projects", {
                     signal: controller.signal,
                 });
-                setProjects(res.data);
+                setProjects(Array.isArray(res.data) ? res.data : res.data.data || []);
             } catch (err) {
                 if (err.code === 'ERR_CANCELED') return;
+                const errorMsg = err.response?.data?.message || err.message || "Erreur de chargement des projets";
+                setError(errorMsg);
                 console.error("Erreur chargement projets:", err);
             } finally {
                 setLoading(false);
@@ -68,25 +77,65 @@ function Projects() {
         return () => controller.abort();
     }, []);
 
+    const showToast = (msg) => {
+        setToast({ msg, visible: true });
+        setTimeout(() => setToast(t => ({ ...t, visible: false })), 2000);
+    };
+
+    const refetchProjects = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const res = await api.get("/projects");
+            setProjects(Array.isArray(res.data) ? res.data : res.data.data || []);
+        } catch (err) {
+            const errorMsg = err.response?.data?.message || err.message || "Erreur de chargement";
+            setError(errorMsg);
+            console.error("Erreur chargement projets:", err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const onSave = async (modifiedRows) => {
-        await Promise.all(
-            modifiedRows.map(row => api.put(`/projects/${row.id}`, row))
-        );
+        try {
+            await Promise.all(
+                modifiedRows.map(row => api.put(`/projects/${row.id}`, row))
+            );
+            showToast(`✓ ${modifiedRows.length} modification(s) sauvegardée(s)`);
+            await refetchProjects();
+        } catch (err) {
+            const errorMsg = err.response?.data?.message || "Erreur lors de la sauvegarde";
+            showToast(`❌ ${errorMsg}`);
+            console.error("Erreur save:", err);
+        }
     };
 
     const handleAddSubmit = async (formData) => {
         try {
             await api.post("/projects", formData);
-            fetchProjects();
+            showToast("✓ Projet ajouté avec succès");
+            setIsModalOpen(false);
+            await refetchProjects();
         } catch (err) {
-            console.error("Erreur lors de l'ajout du projet:", err);
+            const errorMsg = err.response?.data?.message || "Erreur lors de l'ajout du projet";
+            showToast(`❌ ${errorMsg}`);
+            console.error("Erreur ajout projet:", err);
         }
     };
 
     const onDelete = async (ids) => {
-        await Promise.all(
-            ids.map(id => api.delete(`/projects/${id}`))
-        );
+        try {
+            await Promise.all(
+                ids.map(id => api.delete(`/projects/${id}`))
+            );
+            showToast(`✓ ${ids.length} projet(s) supprimé(s)`);
+            await refetchProjects();
+        } catch (err) {
+            const errorMsg = err.response?.data?.message || "Erreur lors de la suppression";
+            showToast(`❌ ${errorMsg}`);
+            console.error("Erreur delete:", err);
+        }
     };
 
     // Construire initialFilters pour ExcelTable
@@ -102,6 +151,8 @@ function Projects() {
         <>
         {loading === true ? (
             <TableSkeleton columns={10} rows={8} />
+        ) : error ? (
+            <TableError message={error} onRetry={refetchProjects} />
         ) : projects.length === 0 ? (
                 <TableEmpty message="Aucune donnée trouvée" />
         ) : (
@@ -123,6 +174,7 @@ function Projects() {
                 />
             </>
         )}
+        <Toast msg={toast.msg} visible={toast.visible} />
         </>
     );
 }

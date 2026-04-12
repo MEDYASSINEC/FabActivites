@@ -7,16 +7,20 @@ use Illuminate\Http\Request;
 
 class FrequentationController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         try {
-            return response()->json(
-                Frequentation::with([
-                    'project',
-                    'activite',
-                    'occupation'
-                ])->get()
-            );
+            $query = Frequentation::with([
+                'project',
+                'activite',
+                'occupations'
+            ]);
+
+            if ($request->has('date') && $request->date) {
+                $query->where('date', $request->date);
+            }
+
+            return response()->json($query->get());
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Erreur lors de la récupération des fréquentations.',
@@ -31,7 +35,7 @@ class FrequentationController extends Controller
             $frequentation = Frequentation::with([
                 'project',
                 'activite',
-                'occupation'
+                'occupations'
             ])->findOrFail($id);
             return response()->json($frequentation);
         } catch (\Exception $e) {

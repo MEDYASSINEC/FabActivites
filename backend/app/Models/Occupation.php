@@ -8,10 +8,19 @@ class Occupation extends Model
 {
     protected $fillable = [
         "zone_occupee",
-        'outillage_machine'
+        'outillage_machine',
+        'heur_debut',
+        'heur_fin',
+        'frequentation_id',
+        'participants',
     ];
 
-    public function frequent() {
-        return $this->hasOne(Frequentation::class);
+    protected $casts = [
+        'participants' => 'array',
+    ];
+
+    // Une occupation appartient à une fréquentation
+    public function frequentation() {
+        return $this->belongsTo(Frequentation::class);
     }
 }

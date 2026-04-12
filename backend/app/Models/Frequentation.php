@@ -8,11 +8,9 @@ class Frequentation extends Model
 {
     protected $fillable = [
         'id',
-        'participants',
         'type_activite',
         'project_id',
         'activite_id',
-        'occupation_id',
         'etape',
         'intervenant',
         'role',
@@ -21,14 +19,12 @@ class Frequentation extends Model
         'date',
     ];
 
-    protected $casts = [
-        'participants' => 'array',
-    ];
+    // Une fréquentation a plusieurs occupations
+    public function occupations (){
+        return $this->hasMany(Occupation::class);
+    }
 
-
-    public function occupation (){
-        return $this->belongsTo(Occupation::class);
-    } 
+    // (Suppression de la relation occupation() obsolète)
 
     public function activite (){
         return $this->belongsTo(Activite::class);

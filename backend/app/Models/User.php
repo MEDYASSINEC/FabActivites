@@ -9,6 +9,10 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
 class User extends Authenticatable
+    // Un participant peut être lié à plusieurs occupations
+    public function occupations() {
+        return $this->belongsToMany(Occupation::class, 'occupation_participant', 'participant_id', 'occupation_id');
+    }
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;

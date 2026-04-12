@@ -15,17 +15,7 @@ class FrequentationProcessController extends Controller
     {
         try {
             $result = DB::transaction(function () use ($request) {
-                $occupationId = null;
-                $activiteId   = null;
-
-                /* création occupation */
-                if ($request->has('occupation')) {
-                    $occupation = Occupation::create([
-                        'zone_occupee'      => $request->occupation['zone_occupee'] ?? null,
-                        'outillage_machine' => $request->occupation['outillage_machine'] ?? null
-                    ]);
-                    $occupationId = $occupation->id;
-                }
+                $activiteId = null;
 
                 /* création activité (seulement si pas de projet sélectionné) */
                 if (!$request->project_id && $request->has('activite')) {
@@ -40,18 +30,26 @@ class FrequentationProcessController extends Controller
 
                 /* création fréquentation */
                 $frequentation = Frequentation::create([
-                    'participants'  => $request->participants,
                     'type_activite' => $request->type_activite,
                     'project_id'    => $request->project_id, // sera null si --autre--
                     'activite_id'   => $activiteId,          // sera null si projet
-                    'occupation_id' => $occupationId,
                     'etape'         => $request->etape,
                     'intervenant'   => $request->intervenant,
                     'role'          => $request->role,
-                    'heur_debut'    => $request->heur_debut,
-                    'heur_fin'      => $request->heur_fin,
                     'date'          => $request->date
                 ]);
+
+                /* création occupation liée (si envoyée ou si des infos temporelles sont là) */
+                if ($request->has('occupation') || $request->has('heur_debut')) {
+                    $occupation = Occupation::create([
+                        'frequentation_id'  => $frequentation->id,
+                        'zone_occupee'      => $request->occupation['zone_occupee'] ?? null,
+                        'outillage_machine' => $request->occupation['outillage_machine'] ?? null,
+                        'heur_debut'        => $request->heur_debut ?? null,
+                        'heur_fin'          => $request->heur_fin ?? null,
+                        'participants'      => $request->participants ?? [],
+                    ]);
+                }
 
                 return $frequentation;
             });
@@ -71,33 +69,57 @@ class FrequentationProcessController extends Controller
 
     public function index()
     {
-        $frequentations = Frequentation::with(['activite', 'occupation'])
-            ->get()
-            ->map(function ($f) {
-                return [
+        $frequentations = Frequentation::with(['activite', 'occupations'])->get();
+        
+        $flat = $frequentations->flatMap(function ($f) {
+            if ($f->occupations->isEmpty()) {
+                return [[
                     'id'                => $f->id,
                     'date'              => $f->date,
-                    'heur_debut'        => $f->heur_debut,
-                    'heur_fin'          => $f->heur_fin,
-                    'participants'      => $f->participants,
                     'type_activite'     => $f->type_activite,
                     'etape'             => $f->etape,
                     'intervenant'       => $f->intervenant,
                     'role'              => $f->role,
-                    // aplati depuis activite
                     'activite_nom'      => $f->activite?->nom ?? $f->project?->intitule_projet,
                     'activite_pole'     => $f->activite?->pole ?? $f->project?->pole,
                     'activite_filiere'  => $f->activite?->filiere ?? $f->project?->filiere,
                     'activite_groupe'   => $f->activite?->groupe ?? $f->project?->groupe,
-                    // aplati depuis occupation
-                    'zone_occupee'      => $f->occupation?->zone_occupee,
-                    'outillage_machine' => $f->occupation?->outillage_machine,
+                    'activite_id'       => $f->activite_id,
+                    'projet_id'         => $f->project_id,
+                    'occupation_id'     => null,
+                    'zone_occupee'      => null,
+                    'outillage_machine' => null,
+                    'heur_debut'        => null,
+                    'heur_fin'          => null,
+                    'participants'      => [],
+                ]];
+            }
+            
+            return $f->occupations->map(function ($occ) use ($f) {
+                return [
+                    'id'                => $f->id, // Frontend uses row.id to do updates via FrequentationProcessController
+                    'occupation_id'     => $occ->id,
+                    'date'              => $f->date,
+                    'type_activite'     => $f->type_activite,
+                    'etape'             => $f->etape,
+                    'intervenant'       => $f->intervenant,
+                    'role'              => $f->role,
+                    'activite_nom'      => $f->activite?->nom ?? $f->project?->intitule_projet,
+                    'activite_pole'     => $f->activite?->pole ?? $f->project?->pole,
+                    'activite_filiere'  => $f->activite?->filiere ?? $f->project?->filiere,
+                    'activite_groupe'   => $f->activite?->groupe ?? $f->project?->groupe,
+                    'zone_occupee'      => $occ->zone_occupee,
+                    'outillage_machine' => $occ->outillage_machine,
+                    'heur_debut'        => $occ->heur_debut,
+                    'heur_fin'          => $occ->heur_fin,
+                    'participants'      => $occ->participants ?? [],
                     'activite_id'       => $f->activite_id,
                     'projet_id'         => $f->project_id,
                 ];
             });
+        });
 
-        return response()->json($frequentations);
+        return response()->json($flat->values());
     }
 
     public function updateFrequentation(Request $request, $id)
@@ -116,26 +138,38 @@ class FrequentationProcessController extends Controller
                     ]);
                 }
 
-                // mettre à jour occupation
-                if ($frequentation->occupation && $request->has('occupation')) {
-                    $frequentation->occupation->update([
-                        'zone_occupee'      => $request->occupation['zone_occupee'] ?? $frequentation->occupation->zone_occupee,
-                        'outillage_machine' => $request->occupation['outillage_machine'] ?? $frequentation->occupation->outillage_machine,
-                    ]);
-                }
-
-                // mettre à jour fréquentation
+                // Mettre à jour fréquentation
                 $frequentation->update([
-                    'participants'  => $request->participants,
                     'type_activite' => $request->type_activite,
                     'project_id'    => $request->project_id,
-                    'heur_debut'    => $request->heur_debut,
-                    'heur_fin'      => $request->heur_fin,
                     'date'          => $request->date,
                     'etape'         => $request->etape,
                     'intervenant'   => $request->intervenant,
                     'role'          => $request->role,
                 ]);
+
+                // Mettre à jour occupation si elle existe pour l'interface Frequentation.jsx (qui édite la première)
+                if ($request->has('occupation') || $request->has('heur_debut')) {
+                    $occ = $frequentation->occupations()->first();
+                    if ($occ) {
+                        $occ->update([
+                            'zone_occupee'      => $request->occupation['zone_occupee'] ?? $occ->zone_occupee,
+                            'outillage_machine' => $request->occupation['outillage_machine'] ?? $occ->outillage_machine,
+                            'heur_debut'        => $request->heur_debut ?? $occ->heur_debut,
+                            'heur_fin'          => $request->heur_fin ?? $occ->heur_fin,
+                            'participants'      => $request->participants ?? $occ->participants,
+                        ]);
+                    } else {
+                        Occupation::create([
+                            'frequentation_id'  => $frequentation->id,
+                            'zone_occupee'      => $request->occupation['zone_occupee'] ?? null,
+                            'outillage_machine' => $request->occupation['outillage_machine'] ?? null,
+                            'heur_debut'        => $request->heur_debut ?? null,
+                            'heur_fin'          => $request->heur_fin ?? null,
+                            'participants'      => $request->participants ?? [],
+                        ]);
+                    }
+                }
             });
 
             return response()->json(['message' => 'Fréquentation mise à jour.']);
@@ -152,12 +186,10 @@ class FrequentationProcessController extends Controller
             DB::transaction(function () use ($id) {
                 $frequentation = Frequentation::findOrFail($id);
 
-                // supprimer les relations d'abord
+                // Les occupations sont supprimées en cascade grâce à la clé étrangère on delete cascade.
+                // Donc il suffit de supprimer l'activité si elle est orpheline.
                 if ($frequentation->activite) {
                     $frequentation->activite->delete();
-                }
-                if ($frequentation->occupation) {
-                    $frequentation->occupation->delete();
                 }
 
                 $frequentation->delete();

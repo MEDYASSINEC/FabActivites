@@ -11,7 +11,7 @@ function parseNum(s) {
 
 
 // ── Main Component ────────────────────────────────────────────
-export default function ExcelTable({ data, columns, onDelete, onSave, addRow, getRowClassName, initialFilters }) {
+export default function ExcelTable({ data, columns, onDelete, onSave, addRow, getRowClassName, initialFilters, onDuplicate }) {
     const rowFromApi = useCallback((obj) => ({
         id: obj.id,
         cells: ["", ...columns.map(c => obj[c.key] ?? "")],
@@ -143,6 +143,55 @@ export default function ExcelTable({ data, columns, onDelete, onSave, addRow, ge
         } else {
             setSelRows(prev => prev.size === 1 && prev.has(id) ? new Set() : new Set([id]));
         }
+    };
+
+    // ── Duplicate selected rows (for Frequentation) ──
+    const duplicateSelected = () => {
+        if (selRows.size === 0) { showToast("Aucune ligne sélectionnée"); return; }
+        if (!onDuplicate) { showToast("Duplication non disponible"); return; }
+        
+        const now = new Date();
+        const currentTime = now.toTimeString().split(' ')[0].substring(0, 5); // HH:MM
+        
+        const newRows = [];
+        selRows.forEach(id => {
+            const originalRow = dataRows.find(r => r.id === id);
+            if (!originalRow) return;
+            
+            // Créer une copie avec des données modifiées
+            const newId = `new-${Date.now()}-${Math.random()}`; // ID temporaire unique
+            const newCells = [...originalRow.cells];
+            
+            // Trouver les indices pour heur_debut et heur_fin
+            const heurDebutIdx = columns.findIndex(c => c.key === 'heur_debut') + 1;
+            const heurFinIdx = columns.findIndex(c => c.key === 'heur_fin') + 1;
+            
+            // Modifier les cellules
+            if (heurDebutIdx > 0) newCells[heurDebutIdx] = currentTime;
+            if (heurFinIdx > 0) newCells[heurFinIdx] = '';
+            
+            // Créer le nouvel objet brut
+            const newRaw = { ...originalRow._raw };
+            newRaw._is_new = true; // Flag pour indiquer que c'est une nouvelle ligne
+            newRaw.heur_debut = currentTime;
+            newRaw.heur_fin = '';
+            delete newRaw.id; // supprimer l'id pour créer un nouvel enregistrement
+            
+            newRows.push({
+                id: newId,
+                cells: newCells,
+                _raw: newRaw,
+            });
+        });
+        
+        setDataRows(prev => [...prev, ...newRows]);
+        
+        // Tracker les nouvelles lignes comme changements
+        newRows.forEach(row => {
+            setPendingChanges(prev => new Map(prev).set(row.id, row._raw));
+        });
+        
+        showToast(`${newRows.length} ligne${newRows.length > 1 ? "s" : ""} dupliquée${newRows.length > 1 ? "s" : ""}`);
     };
 
     // ── Delete selected rows ──
@@ -279,6 +328,18 @@ export default function ExcelTable({ data, columns, onDelete, onSave, addRow, ge
                 </button>
 
                 {/* ── Action buttons ── */}
+                {onDuplicate && (
+                    <button
+                        onClick={duplicateSelected}
+                        disabled={selRows.size === 0}
+                        title={selRows.size > 0 ? `Dupliquer ${selRows.size} ligne(s)` : "Sélectionnez des lignes d'abord"}
+                        className={`btn-action ${selRows.size > 0 ? 'btn-primary' : ''}`}
+                    >
+                        <span style={{ fontSize: 14 }}>📋</span>
+                        Dupliquer{selRows.size > 0 ? ` (${selRows.size})` : ""}
+                    </button>
+                )}
+
                 <button
                     onClick={deleteSelected}
                     disabled={selRows.size === 0}
@@ -360,7 +421,7 @@ export default function ExcelTable({ data, columns, onDelete, onSave, addRow, ge
                 onMouseMove={onMouseMove}
                 onMouseUp={onMouseUp}
                 onContextMenu={onContextMenu}
-                style={{ flex: 1, overflow: "auto", background: "#F0F4F8", cursor: isDragging ? "grabbing" : "default"}}
+                style={{ flex: 1, overflow: "auto", background: "#F0F4F8", cursor: isDragging ? "grabbing" : "default" }}
             >
                 <table style={{ borderCollapse: "collapse", tableLayout: "fixed", marginBottom: "25px" }}>
                     <thead>
@@ -441,38 +502,80 @@ export default function ExcelTable({ data, columns, onDelete, onSave, addRow, ge
                                                 }}
                                             >
                                                 {isEditing ? (
-                                                    <input
-                                                        ref={editRef}
-                                                        type={columns[ci - 1]?.type === 'date' ? 'date' : 'text'}
-                                                        value={editValue}
-                                                        onChange={e => setEditValue(e.target.value)}
-                                                        onBlur={() => commitEdit(ri + 2, ci)}
-                                                        onKeyDown={e => {
-                                                            if (e.key === "Enter") {
-                                                                commitEdit(ri + 2, ci);
-                                                            } else if (e.key === "Tab") {
-                                                                e.preventDefault();
-                                                                commitEdit(ri + 2, ci);
-                                                                const nextCol = ci + 1;
-                                                                setSelCell(s => ({ ...s, col: Math.min(columns.length, s.col + 1) }));
-                                                                if (nextCol <= columns.length) startEdit(ri + 2, nextCol, row.cells[nextCol] || "");
-                                                            } else if (e.key === "Escape") {
-                                                                cancelEdit();
-                                                            }
-                                                        }}
-                                                        style={{
-                                                            width: "100%", height: "100%",
-                                                            border: "none", outline: "2px solid #0061AA",
-                                                            outlineOffset: -1,
-                                                            padding: "0 4px",
-                                                            fontSize: 12, fontFamily: "Segoe UI,Calibri,sans-serif",
-                                                            background: "#fff",
-                                                            color: isNeg ? "#c0392b" : isPos ? "#27ae60" : isPct ? "#0061AA" : "#1a1a1a",
-                                                            fontWeight: isPct ? 600 : 400,
-                                                            textAlign: columns[ci - 1]?.type === 'date' ? "left" : (!isNaN(parseFloat((val || "").replace(/\s/g, ""))) ? "right" : "left"),
-                                                            boxSizing: "border-box",
-                                                        }}
-                                                    />
+                                                    columns[ci - 1]?.type === 'select' || columns[ci - 1]?.type === 'datalist' ? (
+                                                        <>
+                                                            <input
+                                                                ref={editRef}
+                                                                list={`datalist-${ci}`}
+                                                                value={editValue}
+                                                                onChange={e => setEditValue(e.target.value)}
+                                                                onBlur={() => commitEdit(ri + 2, ci)}
+                                                                onKeyDown={e => {
+                                                                    if (e.key === "Enter") {
+                                                                        commitEdit(ri + 2, ci);
+                                                                    } else if (e.key === "Tab") {
+                                                                        e.preventDefault();
+                                                                        commitEdit(ri + 2, ci);
+                                                                        const nextCol = ci + 1;
+                                                                        setSelCell(s => ({ ...s, col: Math.min(columns.length, s.col + 1) }));
+                                                                        if (nextCol <= columns.length) startEdit(ri + 2, nextCol, row.cells[nextCol] || "");
+                                                                    } else if (e.key === "Escape") {
+                                                                        cancelEdit();
+                                                                    }
+                                                                }}
+                                                                style={{
+                                                                    width: "100%", height: "100%",
+                                                                    border: "none", outline: "2px solid #0061AA",
+                                                                    outlineOffset: -1,
+                                                                    padding: "0 4px",
+                                                                    fontSize: 12, fontFamily: "Segoe UI,Calibri,sans-serif",
+                                                                    background: "#fff",
+                                                                    color: "#1a1a1a",
+                                                                    boxSizing: "border-box",
+                                                                }}
+                                                            />
+                                                            <datalist id={`datalist-${ci}`}>
+                                                                {columns[ci - 1].options?.map((opt, oIdx) => (
+                                                                    <option key={oIdx} value={typeof opt === 'object' ? opt.value : opt}>
+                                                                        {typeof opt === 'object' ? opt.label : opt}
+                                                                    </option>
+                                                                ))}
+                                                            </datalist>
+                                                        </>
+                                                    ) : (
+                                                        <input
+                                                            ref={editRef}
+                                                            type={columns[ci - 1]?.type === 'date' ? 'date' : columns[ci - 1]?.type === 'time' ? 'time' : 'text'}
+                                                            value={editValue}
+                                                            onChange={e => setEditValue(e.target.value)}
+                                                            onBlur={() => commitEdit(ri + 2, ci)}
+                                                            onKeyDown={e => {
+                                                                if (e.key === "Enter") {
+                                                                    commitEdit(ri + 2, ci);
+                                                                } else if (e.key === "Tab") {
+                                                                    e.preventDefault();
+                                                                    commitEdit(ri + 2, ci);
+                                                                    const nextCol = ci + 1;
+                                                                    setSelCell(s => ({ ...s, col: Math.min(columns.length, s.col + 1) }));
+                                                                    if (nextCol <= columns.length) startEdit(ri + 2, nextCol, row.cells[nextCol] || "");
+                                                                } else if (e.key === "Escape") {
+                                                                    cancelEdit();
+                                                                }
+                                                            }}
+                                                            style={{
+                                                                width: "100%", height: "100%",
+                                                                border: "none", outline: "2px solid #0061AA",
+                                                                outlineOffset: -1,
+                                                                padding: "0 4px",
+                                                                fontSize: 12, fontFamily: "Segoe UI,Calibri,sans-serif",
+                                                                background: "#fff",
+                                                                color: isNeg ? "#c0392b" : isPos ? "#27ae60" : isPct ? "#0061AA" : "#1a1a1a",
+                                                                fontWeight: isPct ? 600 : 400,
+                                                                textAlign: columns[ci - 1]?.type === 'date' ? "left" : (!isNaN(parseFloat((val || "").replace(/\s/g, ""))) ? "right" : "left"),
+                                                                boxSizing: "border-box",
+                                                            }}
+                                                        />
+                                                    )
                                                 ) : columns[ci - 1]?.key === 'participants' ? (
                                                     <span
                                                         className="participant-count-cell"

@@ -177,6 +177,26 @@ const AddRowModal = ({ isOpen, onClose, onSubmit, title, fields, externalFormDat
                                                 </div>
                                             )}
                                         </div>
+                                    ) : field.type === 'datalist' ? (
+                                        <>
+                                            <input
+                                                type="text"
+                                                name={field.key}
+                                                placeholder={field.label}
+                                                onChange={handleChange}
+                                                required={field.required}
+                                                value={formData[field.key] || ''}
+                                                disabled={field.disabled}
+                                                list={`${field.key}-list`}
+                                            />
+                                            <datalist id={`${field.key}-list`}>
+                                                {field.options && Array.isArray(field.options) && field.options.map(opt => (
+                                                    <option key={opt.value || opt} value={opt.value || opt}>
+                                                        {opt.label || opt}
+                                                    </option>
+                                                ))}
+                                            </datalist>
+                                        </>
                                     ) : (
                                         <input
                                             type={field.type || 'text'}
