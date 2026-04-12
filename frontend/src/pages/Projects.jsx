@@ -14,7 +14,7 @@ const api = axios.create({
     baseURL: import.meta.env.VITE_API_URL,
 });
 
-function Projects() {
+function Projects({ onUnsavedChange }) {
     const [projects, setProjects] = useState([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [searchParams] = useSearchParams();
@@ -164,6 +164,8 @@ function Projects() {
                     onSave={onSave}
                     addRow={() => setIsModalOpen(true)}
                     initialFilters={initialFilters}
+                    persistenceKey="projects"
+                    onUnsavedChange={onUnsavedChange}
                 />
                 <AddRowModal
                     isOpen={isModalOpen}
