@@ -11,14 +11,36 @@ function parseNum(s) {
 
 
 // ── Main Component ────────────────────────────────────────────
-export default function ExcelTable({ data, columns, onDelete, onSave, addRow, getRowClassName, initialFilters, onDuplicate }) {
+export default function ExcelTable({
+    data,
+    columns,
+    onDelete,
+    onSave,
+    addRow,
+    getRowClassName,
+    initialFilters,
+    onDuplicate,
+    persistenceKey,
+    onUnsavedChange,
+}) {
     const rowFromApi = useCallback((obj) => ({
         id: obj.id,
         cells: ["", ...columns.map(c => obj[c.key] ?? "")],
         _raw: obj,
     }), [columns]);
 
-    const [dataRows, setDataRows] = useState(() => data.map(rowFromApi));
+    const getPersistedState = useCallback(() => {
+        if (!persistenceKey) return null;
+        try {
+            const raw = sessionStorage.getItem(`excel-state:${persistenceKey}`);
+            return raw ? JSON.parse(raw) : null;
+        } catch {
+            return null;
+        }
+    }, [persistenceKey]);
+
+    const persisted = getPersistedState();
+    const [dataRows, setDataRows] = useState(() => persisted?.dataRows || data.map(rowFromApi));
     const [colFilters, setColFilters] = useState({});
     const [colSorts, setColSorts] = useState({});
     const [selCell, setSelCell] = useState({ row: 1, col: 1 });
@@ -29,8 +51,12 @@ export default function ExcelTable({ data, columns, onDelete, onSave, addRow, ge
     const [editCell, setEditCell] = useState(null); // { row, col } or null
     const [editValue, setEditValue] = useState("");
     const editRef = useRef(null);
-    const [pendingChanges, setPendingChanges] = useState(new Map()); // id -> row modifiée
-    const [pendingDeletes, setPendingDeletes] = useState(new Set()); // ids supprimés
+    const [pendingChanges, setPendingChanges] = useState(() =>
+        new Map(Array.isArray(persisted?.pendingChanges) ? persisted.pendingChanges : [])
+    ); // id -> row modifiée
+    const [pendingDeletes, setPendingDeletes] = useState(() =>
+        new Set(Array.isArray(persisted?.pendingDeletes) ? persisted.pendingDeletes : [])
+    ); // ids supprimés
     const tableWrapRef = useRef(null);
     const [isDragging, setIsDragging] = useState(false);
     const [dragStart, setDragStart] = useState({ x: 0, scrollLeft: 0 });
@@ -255,8 +281,33 @@ export default function ExcelTable({ data, columns, onDelete, onSave, addRow, ge
     const clearAll = () => { setColFilters({}); setColSorts({}); };
 
     useEffect(() => {
-        setDataRows(data.map(rowFromApi));
-    }, [data]);
+        const hasPending = pendingChanges.size > 0 || pendingDeletes.size > 0;
+        if (!hasPending) {
+            setDataRows(data.map(rowFromApi));
+        }
+    }, [data, rowFromApi, pendingChanges.size, pendingDeletes.size]);
+
+    useEffect(() => {
+        if (!persistenceKey) return;
+        if (pendingChanges.size === 0 && pendingDeletes.size === 0) {
+            sessionStorage.removeItem(`excel-state:${persistenceKey}`);
+            return;
+        }
+
+        sessionStorage.setItem(
+            `excel-state:${persistenceKey}`,
+            JSON.stringify({
+                dataRows,
+                pendingChanges: [...pendingChanges.entries()],
+                pendingDeletes: [...pendingDeletes],
+            })
+        );
+    }, [persistenceKey, dataRows, pendingChanges, pendingDeletes]);
+
+    useEffect(() => {
+        if (!onUnsavedChange) return;
+        onUnsavedChange(pendingChanges.size > 0 || pendingDeletes.size > 0);
+    }, [pendingChanges.size, pendingDeletes.size, onUnsavedChange]);
 
     // ── Apply initial filters from URL params ──
     useEffect(() => {
@@ -382,6 +433,9 @@ export default function ExcelTable({ data, columns, onDelete, onSave, addRow, ge
                             if (changes.length > 0 && onSave) await onSave(changes);
                             setPendingChanges(new Map());
                             setPendingDeletes(new Set());
+                            if (persistenceKey) {
+                                sessionStorage.removeItem(`excel-state:${persistenceKey}`);
+                            }
                             showToast(`Sauvegardé — ${changes.length} modif., ${deletes.length} suppression(s) ✓`);
                         } catch (err) {
                             showToast("Erreur lors de la sauvegarde ✗");
