@@ -197,7 +197,7 @@ export default function OccupationTable({ data, columns, getRowClassName, initia
     const F = "Segoe UI,Calibri,sans-serif";
 
     return (
-        <div style={{ display: "flex", flexDirection: "column", fontFamily: F, fontSize: 13, flex: 1, overflow: 'auto'  }}>
+        <div style={{ display: "flex", flexDirection: "column", fontFamily: F, fontSize: 13, flex: 1, overflow: 'auto' }}>
 
 
             {/* Ribbon bar */}

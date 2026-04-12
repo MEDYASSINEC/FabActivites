@@ -182,8 +182,6 @@ function Frequentations() {
             type: isProjectSelected ? 'checkboxes' : 'list',
             options: isProjectSelected ? projectParticipants : []
         },
-        { key: "zone_occupee", label: "Zone occupée", required: false, type: 'datalist', options: zoneOccupees.map(z => z.name) },
-        { key: "outillage_machine", label: "Outillage", required: false, type: 'datalist', options: outillages.map(o => o.name) },
         { key: "heur_debut", label: "Heure début", required: false, type: 'time' },
         { key: "heur_fin", label: "Heure fin", required: false, type: 'time' },
     ];

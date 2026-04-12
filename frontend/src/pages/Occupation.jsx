@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import axios from 'axios';
-import OccupationTable from "../components/OccupationTable";
 import TableSkeleton from "../components/TableSkeleton";
 import TableEmpty from "../components/TableEmpty";
+import OccupationTable from "../components/occupationTable";
 
 const api = axios.create({
     baseURL: import.meta.env.VITE_API_URL,
@@ -44,9 +44,9 @@ function Occupation() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-    const controller = new AbortController();
+        const controller = new AbortController();
 
-    setLoading(true);
+        setLoading(true);
         api.get("/frequentations/process", { signal: controller.signal })
             .then(res => {
                 const data = res.data.map(f => ({
@@ -74,7 +74,7 @@ function Occupation() {
                 <OccupationTable data={frequentations} columns={COLUMNS} />
             )}
         </>
-)
+    )
 }
 
 export default Occupation;
