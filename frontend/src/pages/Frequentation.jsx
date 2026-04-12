@@ -325,6 +325,14 @@ function Frequentations() {
         return null;
     }, [searchParams, frequentations]);
 
+    if (loading) {
+        return <TableSkeleton columns={12} rows={8} />;
+    }
+
+    if (error) {
+        return <TableError message={error} onRetry={refetchData} />;
+    }
+
     return (
         <>
             {activeSessions.length > 0 && (
@@ -362,36 +370,32 @@ function Frequentations() {
                     )}
                 </div>
             )}
-            {loading ? (
-                <TableSkeleton columns={12} rows={8} />
-            ) : error ? (
-                <TableError message={error} onRetry={refetchData} />
-            ) : frequentations.length === 0 ? (
-                <TableEmpty message="Aucune donnée trouvée" />
+
+            {frequentations.length === 0 ? (
+                <TableEmpty message="Aucune fréquentation trouvée" />
             ) : (
-                <>
-                    <ExcelTable
-                        data={frequentations}
-                        columns={COLUMNS}
-                        onDelete={onDelete}
-                        onSave={onSave}
-                        addRow={() => setIsModalOpen(true)}
-                        getRowClassName={(row) => !row.heur_fin ? 'row-orange-light' : ''}
-                        initialFilters={initialFilters}
-                        onDirtyChange={(dirty) => setDirty('frequentations', dirty)}
-                        onDuplicate={true}
-                    />
-                    <AddRowModal
-                        isOpen={isModalOpen}
-                        onClose={() => { setIsModalOpen(false); setDirty('frequentations', false); }}
-                        onSubmit={handleAddSubmit}
-                        title="Ajouter une Nouvelle Fréquentation"
-                        fields={finalFields}
-                        externalFormData={formData}
-                        setExternalFormData={setFrequentationFormData}
-                    />
-                </>
+                <ExcelTable
+                    data={frequentations}
+                    columns={COLUMNS}
+                    onDelete={onDelete}
+                    onSave={onSave}
+                    addRow={() => setIsModalOpen(true)}
+                    getRowClassName={(row) => !row.heur_fin ? 'row-orange-light' : ''}
+                    initialFilters={initialFilters}
+                    onDirtyChange={(dirty) => setDirty('frequentations', dirty)}
+                    onDuplicate={true}
+                />
             )}
+
+            <AddRowModal
+                isOpen={isModalOpen}
+                onClose={() => { setIsModalOpen(false); setDirty('frequentations', false); }}
+                onSubmit={handleAddSubmit}
+                title="Ajouter une Nouvelle Fréquentation"
+                fields={finalFields}
+                externalFormData={formData}
+                setExternalFormData={setFrequentationFormData}
+            />
             <ConfirmLeaveModal isOpen={showLeaveModal} onConfirm={confirmLeave} onCancel={cancelLeave} />
             <Toast msg={toast.msg} visible={toast.visible} />
         </>

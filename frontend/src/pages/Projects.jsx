@@ -159,16 +159,19 @@ function Projects() {
         return null;
     }, [searchParams]);
 
+    if (loading) {
+        return <TableSkeleton columns={10} rows={8} />;
+    }
+
+    if (error) {
+        return <TableError message={error} onRetry={refetchProjects} />;
+    }
+
     return (
         <>
-        {loading === true ? (
-            <TableSkeleton columns={10} rows={8} />
-        ) : error ? (
-            <TableError message={error} onRetry={refetchProjects} />
-        ) : projects.length === 0 ? (
-                <TableEmpty message="Aucune donnée trouvée" />
-        ) : (
-            <>
+            {projects.length === 0 ? (
+                <TableEmpty message="Aucun projet trouvé" />
+            ) : (
                 <ExcelTable
                     data={projects}
                     columns={COLUMNS}
@@ -178,22 +181,22 @@ function Projects() {
                     initialFilters={initialFilters}
                     onDirtyChange={(dirty) => setDirty('projets', dirty)}
                 />
-                <AddRowModal
-                    isOpen={isModalOpen}
-                    onClose={() => { setIsModalOpen(false); setProjectFormData({}); setDirty('projets', false); }}
-                    onSubmit={handleAddSubmit}
-                    title="Ajouter un Nouveau Projet"
-                    fields={PROJECT_FIELDS}
-                    externalFormData={projectFormData}
-                    setExternalFormData={(updater) => {
-                        setDirty('projets', true);
-                        setProjectFormData((prev) => (typeof updater === 'function' ? updater(prev) : updater));
-                    }}
-                />
-            </>
-        )}
-        <ConfirmLeaveModal isOpen={showLeaveModal} onConfirm={confirmLeave} onCancel={cancelLeave} />
-        <Toast msg={toast.msg} visible={toast.visible} />
+            )}
+            
+            <AddRowModal
+                isOpen={isModalOpen}
+                onClose={() => { setIsModalOpen(false); setProjectFormData({}); setDirty('projets', false); }}
+                onSubmit={handleAddSubmit}
+                title="Ajouter un Nouveau Projet"
+                fields={PROJECT_FIELDS}
+                externalFormData={projectFormData}
+                setExternalFormData={(updater) => {
+                    setDirty('projets', true);
+                    setProjectFormData((prev) => (typeof updater === 'function' ? updater(prev) : updater));
+                }}
+            />
+            <ConfirmLeaveModal isOpen={showLeaveModal} onConfirm={confirmLeave} onCancel={cancelLeave} />
+            <Toast msg={toast.msg} visible={toast.visible} />
         </>
     );
 }
