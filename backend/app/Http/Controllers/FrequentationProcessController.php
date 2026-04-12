@@ -97,8 +97,9 @@ class FrequentationProcessController extends Controller
             
             return $f->occupations->map(function ($occ) use ($f) {
                 return [
-                    'id'                => $f->id, // Frontend uses row.id to do updates via FrequentationProcessController
+                    'id'                => $occ->id, // Use Occupation ID for unique keys in frontend
                     'occupation_id'     => $occ->id,
+                    'frequentation_id'  => $f->id,
                     'date'              => $f->date,
                     'type_activite'     => $f->type_activite,
                     'etape'             => $f->etape,
@@ -126,7 +127,9 @@ class FrequentationProcessController extends Controller
     {
         try {
             DB::transaction(function () use ($request, $id) {
-                $frequentation = Frequentation::findOrFail($id);
+                // Find frequentation either directly or via occupation id
+                $occupation = Occupation::find($id);
+                $frequentation = $occupation ? $occupation->frequentation : Frequentation::findOrFail($id);
 
                 // mettre à jour activité
                 if ($frequentation->activite && $request->has('activite')) {
@@ -184,7 +187,8 @@ class FrequentationProcessController extends Controller
     {
         try {
             DB::transaction(function () use ($id) {
-                $frequentation = Frequentation::findOrFail($id);
+                $occupation = Occupation::find($id);
+                $frequentation = $occupation ? $occupation->frequentation : Frequentation::findOrFail($id);
 
                 // Les occupations sont supprimées en cascade grâce à la clé étrangère on delete cascade.
                 // Donc il suffit de supprimer l'activité si elle est orpheline.
