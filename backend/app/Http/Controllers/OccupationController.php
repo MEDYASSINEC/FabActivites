@@ -36,7 +36,7 @@ class OccupationController extends Controller
                 'zone_occupee'      => 'required|string',
                 'outillage_machine' => 'required|string',
                 'heur_debut'        => 'required',
-                'heur_fin'          => 'required',
+                'heur_fin'          => 'nullable',
                 'frequentation_id'  => 'required|integer|exists:frequentations,id',
                 'participants'      => 'nullable|array',
             ]);

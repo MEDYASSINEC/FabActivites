@@ -68,8 +68,8 @@ const AddRowModal = ({ isOpen, onClose, onSubmit, title, fields, externalFormDat
                                             disabled={field.disabled}
                                         >
                                             <option value="">Sélectionner...</option>
-                                            {field.options.map(opt => (
-                                                <option key={opt.value || opt} value={opt.value || opt}>
+                                            {field.options.map((opt, idx) => (
+                                                <option key={opt.value || opt || idx} value={opt.value || opt}>
                                                     {opt.label || opt}
                                                 </option>
                                             ))}
@@ -190,8 +190,8 @@ const AddRowModal = ({ isOpen, onClose, onSubmit, title, fields, externalFormDat
                                                 list={`${field.key}-list`}
                                             />
                                             <datalist id={`${field.key}-list`}>
-                                                {field.options && Array.isArray(field.options) && field.options.map(opt => (
-                                                    <option key={opt.value || opt} value={opt.value || opt}>
+                                                {field.options && Array.isArray(field.options) && field.options.map((opt, idx) => (
+                                                    <option key={`${opt.value || opt}-${idx}`} value={opt.value || opt}>
                                                         {opt.label || opt}
                                                     </option>
                                                 ))}
