@@ -90,7 +90,7 @@ const useStatsCalculations = (projects, frequentations) => {
             if (!f.date) return;
             const month = f.date.substring(0, 7);
             if (month >= startMonth && month <= endMonth) {
-                months[month] = (months[month] || 0) + f.participants.length;
+                months[month] = (months[month] || 0) + (f.nb_participants || 0);
             }
         });
         return Object.entries(months).sort().map(([name, value]) => ({ name, value }));
@@ -148,7 +148,7 @@ const useStatsCalculations = (projects, frequentations) => {
                 const d = new Date(f.date);
                 return d >= monday && d <= sunday;
             })
-            .reduce((acc, f) => acc + f.participants.length, 0);
+            .reduce((acc, f) => acc + (f.nb_participants || 0), 0);
     }, [frequentations]);
 
     const activeSessionsCount = useMemo(

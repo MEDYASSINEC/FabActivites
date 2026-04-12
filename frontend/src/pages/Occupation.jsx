@@ -225,26 +225,23 @@ function Occupation() {
 
     return (
         <>
-            {rows.length === 0 ? (
-                <TableEmpty message="Aucune occupation trouvée" />
-            ) : (
-                <ExcelTable
-                    data={rows}
-                    columns={COLUMNS.map(col => {
-                        if (col.key === "zone_occupee") {
-                            return { ...col, options: zoneOccupees.map(z => z.name) };
-                        }
-                        if (col.key === "outillage_machine") {
-                            return { ...col, options: outillages.map(o => o.name) };
-                        }
-                        return col;
-                    })}
-                    onDelete={onDelete}
-                    onSave={onSave}
-                    addRow={() => setIsModalOpen(true)}
-                    onDuplicate={true}
-                />
-            )}
+            <ExcelTable
+                data={rows}
+                columns={COLUMNS.map(col => {
+                    if (col.key === "zone_occupee") {
+                        return { ...col, options: zoneOccupees.map(z => z.name) };
+                    }
+                    if (col.key === "outillage_machine") {
+                        return { ...col, options: outillages.map(o => o.name) };
+                    }
+                    return col;
+                })}
+                onDelete={onDelete}
+                onSave={onSave}
+                addRow={() => setIsModalOpen(true)}
+                onDuplicate={true}
+                emptyMessage="Aucune occupation trouvée"
+            />
 
             <AddRowModal
                 isOpen={isModalOpen}

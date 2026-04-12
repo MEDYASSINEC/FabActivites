@@ -177,6 +177,25 @@ const AddRowModal = ({ isOpen, onClose, onSubmit, title, fields, externalFormDat
                                                 </div>
                                             )}
                                         </div>
+                                    ) : field.type === 'textarea' ? (
+                                        <textarea
+                                            name={field.key}
+                                            placeholder={field.label}
+                                            onChange={handleChange}
+                                            required={field.required}
+                                            value={formData[field.key] || ''}
+                                            disabled={field.disabled}
+                                            style={{
+                                                width: '100%',
+                                                minHeight: '80px',
+                                                padding: '8px 12px',
+                                                borderRadius: '8px',
+                                                border: '1px solid #ddd',
+                                                fontSize: '14px',
+                                                fontFamily: 'inherit',
+                                                resize: 'vertical'
+                                            }}
+                                        />
                                     ) : field.type === 'datalist' ? (
                                         <>
                                             <input

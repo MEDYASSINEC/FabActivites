@@ -34,6 +34,7 @@ function Projects() {
         { key: "dt_debut", label: "Début", type: 'date' },
         { key: "dt_fn_prevu", label: "Fin prévue", type: 'date' },
         { key: "dt_fn_reel", label: "Fin réelle", type: 'date' },
+        { key: "remarques", label: "Remarque" },
     ];
 
     const PROJECT_FIELDS = [
@@ -48,6 +49,7 @@ function Projects() {
         { key: "participants", label: "Participants", required: true, type: 'list' },
         { key: "dt_debut", label: "Date début", required: true, type: 'date' },
         { key: "dt_fn_prevu", label: "Date fin prévue", type: 'date' },
+        { key: "remarques", label: "Remarque", required: false, type: 'textarea' },
     ];
 
     useEffect(() => {
