@@ -2,6 +2,10 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import AddRowModal from "../components/form";
 import OccupationTable from "../components/occupationTable";
+import { useDirtyTracker } from "../context/DirtyTrackerContext";
+import { useNavigationGuard } from "../hooks/useNavigationGuard";
+import { useBeforeUnload } from "../hooks/useBeforeUnload";
+import ConfirmLeaveModal from "../components/ConfirmLeaveModal";
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
@@ -31,6 +35,10 @@ const OccupationsTable = () => {
   });
   const [editMode, setEditMode] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const { setDirty } = useDirtyTracker();
+  const { showLeaveModal, confirmLeave, cancelLeave } = useNavigationGuard("occupations");
+  useBeforeUnload("occupations");
 
   // Fetch refs
   useEffect(() => {
@@ -76,6 +84,11 @@ const OccupationsTable = () => {
         : [])
     : (Array.isArray(selectedFrequentation?.participants) ? selectedFrequentation.participants : []);
 
+  const setOccupationFormData = (updater) => {
+    setDirty("occupations", true);
+    setForm((prev) => (typeof updater === "function" ? updater(prev) : updater));
+  };
+
   const handleSubmit = (row) => {
     const payload = {
       ...row,
@@ -86,6 +99,7 @@ const OccupationsTable = () => {
         setOccupations((prev) =>
           prev.map((o) => (o.id === row.id ? res.data.occupation : o))
         );
+        setDirty("occupations", false);
         setIsModalOpen(false);
         setEditMode(false);
         resetForm();
@@ -93,6 +107,7 @@ const OccupationsTable = () => {
     } else {
       api.post(`/occupations`, payload).then((res) => {
         setOccupations((prev) => [...prev, res.data.occupation]);
+        setDirty("occupations", false);
         setIsModalOpen(false);
         resetForm();
       });
@@ -176,7 +191,7 @@ const OccupationsTable = () => {
           <input
             type="date"
             value={date}
-            onChange={(e) => setDate(e.target.value)}
+            onChange={(e) => { setDate(e.target.value); setDirty("occupations", true); }}
             style={{ padding: '6px', borderRadius: '4px', border: '1px solid #ccc' }}
           />
         </label>
@@ -196,13 +211,15 @@ const OccupationsTable = () => {
 
       <AddRowModal
          isOpen={isModalOpen}
-         onClose={() => setIsModalOpen(false)}
+         onClose={() => { setIsModalOpen(false); setDirty("occupations", false); }}
          onSubmit={handleSubmit}
          title={editMode ? "Modifier l'Occupation" : "Ajouter une Occupation"}
          fields={formFields}
          externalFormData={form}
-         setExternalFormData={setForm}
+         setExternalFormData={setOccupationFormData}
       />
+
+      <ConfirmLeaveModal isOpen={showLeaveModal} onConfirm={confirmLeave} onCancel={cancelLeave} />
     </>
   );
 };

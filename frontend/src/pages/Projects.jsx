@@ -8,6 +8,10 @@ import TableEmpty from "../components/TableEmpty";
 import TableError from "../components/TableError";
 import Toast from "../components/Toast";
 import { POLES } from '../constants/poles';
+import { useDirtyTracker } from '../context/DirtyTrackerContext';
+import { useNavigationGuard } from '../hooks/useNavigationGuard';
+import { useBeforeUnload } from '../hooks/useBeforeUnload';
+import ConfirmLeaveModal from '../components/ConfirmLeaveModal';
 
 // instance axios avec baseURL propre
 const api = axios.create({
@@ -21,6 +25,11 @@ function Projects() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [toast, setToast] = useState({ msg: "", visible: false });
+    const [projectFormData, setProjectFormData] = useState({});
+
+    const { setDirty } = useDirtyTracker();
+    const { showLeaveModal, confirmLeave, cancelLeave } = useNavigationGuard('projets');
+    useBeforeUnload('projets');
 
     const COLUMNS = [
         { key: "intitule_projet", label: "Intitulé projet" },
@@ -103,6 +112,7 @@ function Projects() {
                 modifiedRows.map(row => api.put(`/projects/${row.id}`, row))
             );
             showToast(`✓ ${modifiedRows.length} modification(s) sauvegardée(s)`);
+            setDirty('projets', false);
             await refetchProjects();
         } catch (err) {
             const errorMsg = err.response?.data?.message || "Erreur lors de la sauvegarde";
@@ -115,6 +125,7 @@ function Projects() {
         try {
             await api.post("/projects", formData);
             showToast("✓ Projet ajouté avec succès");
+            setDirty('projets', false);
             setIsModalOpen(false);
             await refetchProjects();
         } catch (err) {
@@ -130,6 +141,7 @@ function Projects() {
                 ids.map(id => api.delete(`/projects/${id}`))
             );
             showToast(`✓ ${ids.length} projet(s) supprimé(s)`);
+            setDirty('projets', false);
             await refetchProjects();
         } catch (err) {
             const errorMsg = err.response?.data?.message || "Erreur lors de la suppression";
@@ -162,18 +174,25 @@ function Projects() {
                     columns={COLUMNS}
                     onDelete={onDelete}
                     onSave={onSave}
-                    addRow={() => setIsModalOpen(true)}
+                    addRow={() => { setIsModalOpen(true); setProjectFormData({}); }}
                     initialFilters={initialFilters}
+                    onDirtyChange={(dirty) => setDirty('projets', dirty)}
                 />
                 <AddRowModal
                     isOpen={isModalOpen}
-                    onClose={() => setIsModalOpen(false)}
+                    onClose={() => { setIsModalOpen(false); setProjectFormData({}); setDirty('projets', false); }}
                     onSubmit={handleAddSubmit}
                     title="Ajouter un Nouveau Projet"
                     fields={PROJECT_FIELDS}
+                    externalFormData={projectFormData}
+                    setExternalFormData={(updater) => {
+                        setDirty('projets', true);
+                        setProjectFormData((prev) => (typeof updater === 'function' ? updater(prev) : updater));
+                    }}
                 />
             </>
         )}
+        <ConfirmLeaveModal isOpen={showLeaveModal} onConfirm={confirmLeave} onCancel={cancelLeave} />
         <Toast msg={toast.msg} visible={toast.visible} />
         </>
     );
