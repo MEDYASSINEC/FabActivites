@@ -68,8 +68,12 @@ function Occupation() {
                 api.get("/zone-occupees"),
                 api.get("/outillages"),
             ]);
+            console.log("frequentations: ", frequentationsRes.data)
 
-            const frequentationsData = Array.isArray(frequentationsRes.data) ? frequentationsRes.data : [];
+            const rawData = Array.isArray(frequentationsRes.data) ? frequentationsRes.data : [];
+            // Filtrer les doublons par ID
+            const frequentationsData = Array.from(new Map(rawData.map(f => [f.id, f])).values());
+            
             setFrequentations(frequentationsData);
             setRows(mapFrequentationsToOccupations(frequentationsData));
             setZoneOccupees(Array.isArray(zonesRes.data) ? zonesRes.data : []);
