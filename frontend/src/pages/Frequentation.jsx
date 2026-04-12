@@ -4,7 +4,6 @@ import axios from 'axios';
 import ExcelTable from "../components/ExcelTable";
 import AddRowModal from "../components/form";
 import TableSkeleton from "../components/TableSkeleton";
-import TableEmpty from "../components/TableEmpty";
 import TableError from "../components/TableError";
 import Toast from "../components/Toast";
 import { POLES } from '../constants/poles';
@@ -345,11 +344,9 @@ function Frequentations() {
                 </div>
             )}
             {loading ? (
-                <TableSkeleton columns={12} rows={8} />
+                <TableSkeleton columns={COLUMNS.length} rows={8} />
             ) : error ? (
                 <TableError message={error} onRetry={refetchData} />
-            ) : frequentations.length === 0 ? (
-                <TableEmpty message="Aucune donnée trouvée" />
             ) : (
                 <>
                     <ExcelTable
@@ -361,6 +358,7 @@ function Frequentations() {
                         getRowClassName={(row) => !row.heur_fin ? 'row-orange-light' : ''}
                         initialFilters={initialFilters}
                         onDuplicate={true}
+                        emptyMessage="Aucune fréquentation enregistrée."
                     />
                     <AddRowModal
                         isOpen={isModalOpen}

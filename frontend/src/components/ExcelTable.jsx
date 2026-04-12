@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import FilterPopup from "./FilterPopup";
 import Toast from "./Toast";
 import ParticipantsModal from "./ParticipantsModal";
+import TableEmpty from "./TableEmpty";
 
 
 function parseNum(s) {
@@ -11,7 +12,7 @@ function parseNum(s) {
 
 
 // ── Main Component ────────────────────────────────────────────
-export default function ExcelTable({ data, columns, onDelete, onSave, addRow, getRowClassName, initialFilters, onDuplicate }) {
+export default function ExcelTable({ data, columns, onDelete, onSave, addRow, getRowClassName, initialFilters, onDuplicate, emptyMessage = "Aucune donnée trouvée" }) {
     const rowFromApi = useCallback((obj) => ({
         id: obj.id,
         cells: ["", ...columns.map(c => obj[c.key] ?? "")],
@@ -463,6 +464,17 @@ export default function ExcelTable({ data, columns, onDelete, onSave, addRow, ge
                     </thead>
                     <tbody>
 
+                        {visibleRows.length === 0 ? (
+                            <tr>
+                                <td
+                                    colSpan={columns.length + 1}
+                                    style={{ padding: "24px", background: "#fff" }}
+                                >
+                                    <TableEmpty message={emptyMessage} />
+                                </td>
+                            </tr>
+                        ) : (
+                        <>
                         {/* Data rows */}
                         {visibleRows.map((row, ri) => {
                             const isRowSel = selRows.has(row.id);
@@ -598,6 +610,8 @@ export default function ExcelTable({ data, columns, onDelete, onSave, addRow, ge
                                 </tr>
                             );
                         })}
+                        </>
+                        )}
                     </tbody>
                 </table>
             </div>
