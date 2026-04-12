@@ -35,7 +35,6 @@ function Frequentations() {
         { key: "etape", label: "Etape/Séance" },
         { key: "intervenant", label: "Intervenant/Résponsable" },
         { key: "role", label: "Rôle" },
-        { key: "participants", label: "Participants" },
         { key: "activite_pole", label: "Pôle", type: 'datalist', options: POLES },
         { key: "activite_filiere", label: "Filière" },
         { key: "activite_groupe", label: "Groupe" },
@@ -121,7 +120,6 @@ function Frequentations() {
                 heur_debut: timeStr,
                 type_activite: 'Formation', // Default as per request order?
                 activite_nom: '',
-                participants: []
             });
         }
     }, [isModalOpen]);
@@ -136,7 +134,6 @@ function Frequentations() {
                     activite_pole: selectedProject.pole || '',
                     activite_filiere: selectedProject.filiere || '',
                     activite_groupe: selectedProject.groupe || '',
-                    participants: [] // RàZ des participants lors du changement de projet
                 }));
             }
         } else if (formData.activite_nom === 'autre') {
@@ -146,16 +143,12 @@ function Frequentations() {
                 activite_filiere: '',
                 activite_groupe: '',
                 project_id: null,
-                participants: [] // RàZ des participants lors du passage en mode "autre"
             }));
         }
     }, [formData.activite_nom]);
 
     const isAutre = formData.activite_nom === 'autre';
     const isProjectSelected = formData.activite_nom && formData.activite_nom !== 'autre' && !isNaN(formData.activite_nom);
-    const selectedProject = projects.find(p => p.id == formData.activite_nom);
-    const projectParticipants = Array.isArray(selectedProject?.participants) ? selectedProject.participants : [];
-
     const FREQUENTATION_FIELDS = [
         { key: "date", label: "Date", required: false, type: 'date' },
         {
@@ -175,13 +168,6 @@ function Frequentations() {
         { key: "etape", label: "Etape/Séance", required: false },
         { key: "intervenant", label: "Intervenant/Responsable", required: false },
         { key: "role", label: "Rôle", required: false },
-        {
-            key: "participants",
-            label: "Participants",
-            required: false,
-            type: isProjectSelected ? 'checkboxes' : 'list',
-            options: isProjectSelected ? projectParticipants : []
-        },
         { key: "heur_debut", label: "Heure début", required: false, type: 'time' },
         { key: "heur_fin", label: "Heure fin", required: false, type: 'time' },
     ];
@@ -191,7 +177,6 @@ function Frequentations() {
             await Promise.all(
                 modifiedRows.map(row => {
                     const payload = {
-                        participants: row.participants,
                         type_activite: row.type_activite,
                         project_id: row.project_id,
                         etape: row.etape,
@@ -205,10 +190,6 @@ function Frequentations() {
                             pole: row.activite_pole,
                             filiere: row.activite_filiere,
                             groupe: row.activite_groupe,
-                        },
-                        occupation: {
-                            zone_occupee: row.zone_occupee,
-                            outillage_machine: row.outillage_machine,
                         },
                     };
                     
@@ -233,7 +214,6 @@ function Frequentations() {
         try {
             const projectForActivite = data.activite_nom !== 'autre' ? projects.find(p => p.id == data.activite_nom) : null;
             const payload = {
-                participants: data.participants || [],
                 type_activite: data.type_activite,
                 project_id: data.activite_nom === 'autre' ? null : data.activite_nom,
                 etape: data.etape,
@@ -247,10 +227,6 @@ function Frequentations() {
                     pole: data.activite_pole || projectForActivite?.pole || '',
                     filiere: data.activite_filiere || projectForActivite?.filiere || '',
                     groupe: data.activite_groupe || projectForActivite?.groupe || '',
-                },
-                occupation: {
-                    zone_occupee: data.zone_occupee,
-                    outillage_machine: data.outillage_machine,
                 },
             };
 
@@ -302,10 +278,6 @@ function Frequentations() {
                     filiere: session.activite_filiere,
                     groupe: session.activite_groupe,
                 },
-                occupation: {
-                    zone_occupee: session.zone_occupee,
-                    outillage_machine: session.outillage_machine,
-                }
             });
             showToast("✓ Session terminée");
             await refetchData();
@@ -366,7 +338,6 @@ function Frequentations() {
                                         <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
                                             <span style={{ fontWeight: '600', minWidth: '150px' }}>{session.activite_nom}</span>
                                             <span style={{ fontSize: '13px', color: '#666' }}>Début: {session.heur_debut}</span>
-                                            <span style={{ fontSize: '13px', color: '#666' }}>{Array.isArray(session.participants) ? session.participants.length : 0} pers.</span>
                                         </div>
                                         <button
                                             onClick={() => handleFinishSession(session)}

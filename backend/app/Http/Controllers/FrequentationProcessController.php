@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\Activite;
 use App\Models\Frequentation;
-use App\Models\Occupation;
 use Illuminate\Http\Request;
 
 use Illuminate\Support\Facades\DB;
@@ -36,20 +35,10 @@ class FrequentationProcessController extends Controller
                     'etape'         => $request->etape,
                     'intervenant'   => $request->intervenant,
                     'role'          => $request->role,
+                    'heur_debut'    => $request->heur_debut,
+                    'heur_fin'      => $request->heur_fin,
                     'date'          => $request->date
                 ]);
-
-                /* création occupation liée (si envoyée ou si des infos temporelles sont là) */
-                if ($request->has('occupation') || $request->has('heur_debut')) {
-                    $occupation = Occupation::create([
-                        'frequentation_id'  => $frequentation->id,
-                        'zone_occupee'      => $request->occupation['zone_occupee'] ?? null,
-                        'outillage_machine' => $request->occupation['outillage_machine'] ?? null,
-                        'heur_debut'        => $request->heur_debut ?? null,
-                        'heur_fin'          => $request->heur_fin ?? null,
-                        'participants'      => $request->participants ?? [],
-                    ]);
-                }
 
                 return $frequentation;
             });
@@ -89,8 +78,8 @@ class FrequentationProcessController extends Controller
                     'occupation_id'     => null,
                     'zone_occupee'      => null,
                     'outillage_machine' => null,
-                    'heur_debut'        => null,
-                    'heur_fin'          => null,
+                    'heur_debut'        => $f->heur_debut,
+                    'heur_fin'          => $f->heur_fin,
                     'participants'      => [],
                 ]];
             }
@@ -110,8 +99,8 @@ class FrequentationProcessController extends Controller
                     'activite_groupe'   => $f->activite?->groupe ?? $f->project?->groupe,
                     'zone_occupee'      => $occ->zone_occupee,
                     'outillage_machine' => $occ->outillage_machine,
-                    'heur_debut'        => $occ->heur_debut,
-                    'heur_fin'          => $occ->heur_fin,
+                    'heur_debut'        => $f->heur_debut,
+                    'heur_fin'          => $f->heur_fin,
                     'participants'      => $occ->participants ?? [],
                     'activite_id'       => $f->activite_id,
                     'projet_id'         => $f->project_id,
@@ -146,30 +135,9 @@ class FrequentationProcessController extends Controller
                     'etape'         => $request->etape,
                     'intervenant'   => $request->intervenant,
                     'role'          => $request->role,
+                    'heur_debut'    => $request->heur_debut,
+                    'heur_fin'      => $request->heur_fin,
                 ]);
-
-                // Mettre à jour occupation si elle existe pour l'interface Frequentation.jsx (qui édite la première)
-                if ($request->has('occupation') || $request->has('heur_debut')) {
-                    $occ = $frequentation->occupations()->first();
-                    if ($occ) {
-                        $occ->update([
-                            'zone_occupee'      => $request->occupation['zone_occupee'] ?? $occ->zone_occupee,
-                            'outillage_machine' => $request->occupation['outillage_machine'] ?? $occ->outillage_machine,
-                            'heur_debut'        => $request->heur_debut ?? $occ->heur_debut,
-                            'heur_fin'          => $request->heur_fin ?? $occ->heur_fin,
-                            'participants'      => $request->participants ?? $occ->participants,
-                        ]);
-                    } else {
-                        Occupation::create([
-                            'frequentation_id'  => $frequentation->id,
-                            'zone_occupee'      => $request->occupation['zone_occupee'] ?? null,
-                            'outillage_machine' => $request->occupation['outillage_machine'] ?? null,
-                            'heur_debut'        => $request->heur_debut ?? null,
-                            'heur_fin'          => $request->heur_fin ?? null,
-                            'participants'      => $request->participants ?? [],
-                        ]);
-                    }
-                }
             });
 
             return response()->json(['message' => 'Fréquentation mise à jour.']);
