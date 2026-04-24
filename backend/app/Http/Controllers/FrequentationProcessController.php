@@ -38,7 +38,7 @@ class FrequentationProcessController extends Controller
                     'heur_debut'    => $request->heur_debut,
                     'heur_fin'      => $request->heur_fin,
                     'date'          => $request->date,
-                    'nb_participants' => $request->nb_participants,
+                    'nb_participants' => $request->nb_participants ?: null,
                 ]);
 
                 return $frequentation;
@@ -70,6 +70,15 @@ class FrequentationProcessController extends Controller
             ->filter() // On retire les entrées vides
             ->unique();
 
+            // Fallback strategy for participants count:
+            // 1. Manual count ($f->nb_participants)
+            // 2. Occupations participants count ($allParticipants)
+            // 3. Project participants count (if it's a project development session)
+            $projectParticipantsCount = 0;
+            if ($f->project && is_array($f->project->participants)) {
+                $projectParticipantsCount = count(array_filter($f->project->participants));
+            }
+
             return [
                 'id'                   => $f->id,
                 'date'                 => $f->date,
@@ -85,7 +94,7 @@ class FrequentationProcessController extends Controller
                 'projet_id'            => $f->project_id,
                 'heur_debut'           => $f->heur_debut,
                 'heur_fin'             => $f->heur_fin,
-                'nb_participants'      => $f->nb_participants ?? $allParticipants->count(),
+                'nb_participants'      => (int) ($f->nb_participants ?? ($allParticipants->count() ?: $projectParticipantsCount)),
             ];
         });
 
@@ -118,7 +127,7 @@ class FrequentationProcessController extends Controller
                     'role'          => $request->role,
                     'heur_debut'    => $request->heur_debut,
                     'heur_fin'      => $request->heur_fin,
-                    'nb_participants' => $request->nb_participants,
+                    'nb_participants' => $request->nb_participants ?: null,
                 ]);
             });
 

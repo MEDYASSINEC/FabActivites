@@ -82,11 +82,10 @@ class DashboardController extends Controller
             ->distinct()
             ->count('activites.nom');
 
-        $dureeTotaleMinutes = (int) DB::table('occupations')
-            ->join('frequentations', 'occupations.frequentation_id', '=', 'frequentations.id')
-            ->whereDate('frequentations.date', '>=', $from)
-            ->whereRaw("LOWER(frequentations.type_activite) = 'formation'")
-            ->sum(DB::raw('TIMESTAMPDIFF(MINUTE, occupations.heur_debut, occupations.heur_fin)'));
+        $dureeTotaleMinutes = (int) DB::table('frequentations')
+            ->whereDate('date', '>=', $from)
+            ->whereRaw("LOWER(type_activite) = 'formation'")
+            ->sum(DB::raw('TIMESTAMPDIFF(MINUTE, heur_debut, heur_fin)'));
 
         return response()->json([
             'nombre_formations' => $nombreFormations,

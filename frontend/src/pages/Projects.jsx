@@ -109,8 +109,15 @@ function Projects() {
 
     const onSave = async (modifiedRows) => {
         try {
+            // Correction: forcer responsable_projet à être une string
+            const cleanedRows = modifiedRows.map(row => ({
+                ...row,
+                responsable_projet: typeof row.responsable_projet === 'object' && row.responsable_projet !== null
+                    ? (row.responsable_projet.value || row.responsable_projet.label || '')
+                    : (row.responsable_projet ?? '')
+            }));
             await Promise.all(
-                modifiedRows.map(row => api.put(`/projects/${row.id}`, row))
+                cleanedRows.map(row => api.put(`/projects/${row.id}`, row))
             );
             showToast(`✓ ${modifiedRows.length} modification(s) sauvegardée(s)`);
             setDirty('projets', false);

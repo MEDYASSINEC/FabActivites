@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { use, useEffect, useState } from 'react';
 import { api } from './api';
 import KpiCard from './KpiCard';
 
@@ -12,6 +12,7 @@ export default function KpiFormations({ from }) {
       .then((res) => setState({ data: res.data, loading: false, error: null }))
       .catch((e) => setState({ data: null, loading: false, error: e.message }));
   }, [from]);
+
 
   return (
     <KpiCard title="Formations réalisées" isLoading={state.loading} error={state.error}>

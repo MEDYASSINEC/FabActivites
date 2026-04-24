@@ -48,7 +48,7 @@ function Frequentations() {
         { key: "activite_groupe", label: "Groupe" },
         { key: "heur_debut", label: "Heure début", type: 'time' },
         { key: "heur_fin", label: "Heure fin", type: 'time' },
-        { key: "nb_participants", label: "Nombre des participants" },
+        { key: "nb_participants", label: "Nombre des participants", type: 'number' },
     ];
 
     useEffect(() => {

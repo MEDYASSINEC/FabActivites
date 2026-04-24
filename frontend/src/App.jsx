@@ -4,7 +4,7 @@ import './App.css';
 import Projects from './pages/Projects';
 import Frequentations from './pages/Frequentation';
 import Occupation from './pages/Occupation';
-import Dashboard from './pages/Dashboard';
+import Dashboard from './pages/Dashboard2';
 import Settings from './pages/Settings';
 import AppLayout from './AppLayout';
 
