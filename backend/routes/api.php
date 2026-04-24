@@ -42,5 +42,6 @@ Route::prefix('dashboard')->group(function () {
     Route::get('/seances', [DashboardController::class, 'seances']);
     Route::get('/frequentations/mois', [DashboardController::class, 'frequentationsMois']);
     Route::get('/occupations/mois', [DashboardController::class, 'occupationsMois']);
+    Route::get('/occupations/zones', [DashboardController::class, 'occupationsZones']);
     Route::get('/outillages/mois', [DashboardController::class, 'outillagesMois']);
 });

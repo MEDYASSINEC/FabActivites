@@ -207,47 +207,82 @@ class DashboardController extends Controller
     public function seances(Request $request): JsonResponse
     {
         $from = $this->fromDate($request);
-        $typeActivite = $request->query('type_activite');
 
-        $query = DB::table('occupations')
-            ->join('frequentations', 'occupations.frequentation_id', '=', 'frequentations.id')
+        // On récupère les données directement depuis la table frequentations
+        $rawFormations = DB::table('frequentations')
+            ->leftJoin('activites', 'frequentations.activite_id', '=', 'activites.id')
             ->selectRaw("DATE_FORMAT(frequentations.date, '%Y-%m') as mois")
-            ->selectRaw('COUNT(occupations.id) as nb_seances')
-            ->selectRaw('SUM(TIMESTAMPDIFF(MINUTE, occupations.heur_debut, occupations.heur_fin)) as duree_minutes')
-            ->selectRaw('SUM(COALESCE(JSON_LENGTH(occupations.participants), 0)) as nb_participants')
+            ->selectRaw('COALESCE(activites.nom, "Sans nom") as formation_nom')
+            ->selectRaw('COUNT(*) as nb_seances_formation') // Chaque frequentation est une séance
+            ->selectRaw('SUM(TIMESTAMPDIFF(MINUTE, frequentations.heur_debut, frequentations.heur_fin)) as duree_minutes_formation')
+            ->selectRaw('MAX(COALESCE(frequentations.nb_participants, 0)) as nb_participants_formation')
+            ->whereRaw('LOWER(frequentations.type_activite) LIKE ?', ['%formation%'])
             ->whereDate('frequentations.date', '>=', $from)
-            ->groupBy('mois')
-            ->orderBy('mois');
+            ->groupBy('mois', 'formation_nom')
+            ->get();
 
-        if ($typeActivite) {
-            $query->where('frequentations.type_activite', $typeActivite);
-        }
+        $results = $rawFormations->groupBy('mois')->map(function ($items, $mois) {
+            return [
+                'mois' => $mois,
+                'nb_formations' => $items->count(), // Nombre de formations uniques par nom
+                'nb_seances' => $items->sum('nb_seances_formation'),
+                'duree_minutes' => $items->sum('duree_minutes_formation'),
+                'nb_participants' => $items->sum('nb_participants_formation'),
+            ];
+        })->values()->sortBy('mois');
 
-        return response()->json($query->get());
+        return response()->json($results->values());
     }
 
     public function frequentationsMois(Request $request): JsonResponse
     {
         $from = $this->fromDate($request);
+        $groupBy = $request->query('groupBy');
 
-        $rows = DB::table('frequentations')
-            ->selectRaw("DATE_FORMAT(date, '%Y-%m') as mois")
-            ->selectRaw("COALESCE(type_activite, 'Non défini') as type_activite")
+        $query = DB::table('frequentations')
+            ->selectRaw("DATE_FORMAT(frequentations.date, '%Y-%m') as mois")
             ->selectRaw('COUNT(*) as total')
-            ->whereDate('date', '>=', $from)
-            ->groupBy('mois', 'type_activite')
-            ->orderBy('mois')
-            ->get();
+            ->whereDate('frequentations.date', '>=', $from);
+
+        if ($groupBy === 'pole') {
+            $query->leftJoin('activites', 'frequentations.activite_id', '=', 'activites.id')
+                  ->selectRaw("COALESCE(activites.pole, 'Non défini') as categorie")
+                  ->groupBy('mois', 'categorie');
+        } else {
+            $query->selectRaw("COALESCE(type_activite, 'Non défini') as categorie")
+                  ->groupBy('mois', 'categorie');
+        }
+
+        $rows = $query->orderBy('mois')->get();
 
         $result = [];
         foreach ($rows as $row) {
             if (!isset($result[$row->mois])) {
                 $result[$row->mois] = ['mois' => $row->mois];
             }
-            $result[$row->mois][$row->type_activite] = (int) $row->total;
+            $result[$row->mois][$row->categorie] = (int) $row->total;
         }
 
         return response()->json(array_values($result));
+    }
+
+    public function occupationsZones(Request $request): JsonResponse
+    {
+        $from = $this->fromDate($request);
+
+        $rows = DB::table('occupations')
+            ->join('frequentations', 'occupations.frequentation_id', '=', 'frequentations.id')
+            ->selectRaw("DATE_FORMAT(frequentations.date, '%Y-%m') as mois")
+            ->selectRaw("COALESCE(occupations.zone_occupee, 'Non défini') as zone")
+            ->selectRaw('COUNT(occupations.id) as nb_utilisations')
+            ->selectRaw('SUM(COALESCE(JSON_LENGTH(occupations.participants), 0)) as nb_utilisateurs')
+            ->selectRaw('SUM(TIMESTAMPDIFF(MINUTE, occupations.heur_debut, occupations.heur_fin)) / 60 as heures')
+            ->whereDate('frequentations.date', '>=', $from)
+            ->groupBy('mois', 'zone')
+            ->orderBy('mois')
+            ->get();
+
+        return response()->json($rows);
     }
 
     public function occupationsMois(Request $request): JsonResponse
