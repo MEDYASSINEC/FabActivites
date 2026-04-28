@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import axios from "axios";
 import ExcelTable from "../components/ExcelTable";
 import AddRowModal from "../components/form";
 import TableSkeleton from "../components/TableSkeleton";
-import TableEmpty from "../components/TableEmpty";
 import TableError from "../components/TableError";
 import Toast from "../components/Toast";
 import { useDirtyTracker } from '../context/DirtyTrackerContext';
@@ -20,14 +19,12 @@ const COLUMNS = [
     { key: "type_activite", label: "Type activité" },
     { key: "activite_nom", label: "Projet/Activité" },
     { key: "zone_occupee", label: "Zone occupée", type: "datalist" },
-    { key: "outillage_machine", label: "Outillage", type: "datalist" },
+    { key: "outillage_machine", label: "Outillage / Machine utilisée", type: "datalist" },
     { key: "heur_debut", label: "Heure début", type: "time" },
     { key: "heur_fin", label: "Heure fin", type: "time" },
-    { key: "participants", label: "Participants" },
 ];
 
 function Occupation() {
-    const [rows, setRows] = useState([]);
     const [frequentations, setFrequentations] = useState([]);
     const [zoneOccupees, setZoneOccupees] = useState([]);
     const [outillages, setOutillages] = useState([]);
@@ -46,230 +43,154 @@ function Occupation() {
         setTimeout(() => setToast(t => ({ ...t, visible: false })), 2200);
     };
 
-    const mapFrequentationsToOccupations = (frequentationsData) => {
-        return frequentationsData.flatMap((f) => {
-            if (!Array.isArray(f.occupations) || f.occupations.length === 0) return [];
+    // Calcul dynamique des lignes du tableau à partir des fréquentations
+    const rows = useMemo(() => {
+        return frequentations.flatMap((f) => {
+            if (!Array.isArray(f.occupations)) return [];
             return f.occupations.map((occ) => ({
                 id: occ.id,
                 occupation_id: occ.id,
                 frequentation_id: f.id,
-                date: f.date,
+                date: occ.date, // Priorité stricte à la colonne date de la table occupations
                 type_activite: f.type_activite,
                 activite_nom: f.activite?.nom ?? f.project?.intitule_projet ?? "",
                 zone_occupee: occ.zone_occupee,
                 outillage_machine: occ.outillage_machine,
                 heur_debut: occ.heur_debut,
                 heur_fin: occ.heur_fin,
-                participants: Array.isArray(occ.participants) ? occ.participants : [],
                 project_id: f.project_id,
                 project_participants: Array.isArray(f.project?.participants) ? f.project.participants : [],
             }));
         });
-    };
-
-    const refetchData = async () => {
-        setLoading(true);
-        setError(null);
-        try {
-            const [frequentationsRes, zonesRes, outillagesRes] = await Promise.all([
-                api.get("/frequentations"),
-                api.get("/zone-occupees"),
-                api.get("/outillages"),
-            ]);
-
-            const frequentationsData = Array.isArray(frequentationsRes.data) ? frequentationsRes.data : [];
-            setFrequentations(frequentationsData);
-            setRows(mapFrequentationsToOccupations(frequentationsData));
-
-            // Ensure unique names for datalists
-            const zoData = Array.isArray(zonesRes.data) ? zonesRes.data : [];
-            setZoneOccupees(Array.from(new Map(zoData.map(z => [z.name, z])).values()));
-
-            const outData = Array.isArray(outillagesRes.data) ? outillagesRes.data : [];
-            setOutillages(Array.from(new Map(outData.map(o => [o.name, o])).values()));
-        } catch (err) {
-            const errorMsg = err.response?.data?.message || err.message || "Erreur de chargement des occupations";
-            setError(errorMsg);
-        } finally {
-            setLoading(false);
-        }
-    };
+    }, [frequentations]);
 
     useEffect(() => {
-        refetchData();
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const [freqRes, zonesRes, outRes] = await Promise.all([
+                    api.get("/frequentations"),
+                    api.get("/zone-occupees"),
+                    api.get("/outillages"),
+                ]);
+                setFrequentations(freqRes.data || []);
+                setZoneOccupees(Array.from(new Map((zonesRes.data || []).map(z => [z.name, z])).values()));
+                setOutillages(Array.from(new Map((outRes.data || []).map(o => [o.name, o])).values()));
+            } catch (err) {
+                setError("Erreur chargement");
+            } finally { setLoading(false); }
+        };
+        fetchData();
     }, []);
 
-    useEffect(() => {
-        if (!isModalOpen) return;
-        const now = new Date();
-        const dateStr = now.toISOString().split("T")[0];
-        const timeStr = now.toTimeString().split(" ")[0].slice(0, 5);
-        setFormData({
-            date: dateStr,
-            frequentation_id: "",
-            zone_occupee: "",
-            outillage_machine: "",
-            heur_debut: timeStr,
-            heur_fin: "",
-            participants: [],
-        });
-    }, [isModalOpen]);
-
-    const frequentationsForDate = useMemo(() => {
-        if (!formData.date) return [];
-        return frequentations
-            .filter(f => f.date === formData.date)
-            .map(f => ({
-                value: f.id,
-                label: `${f.activite?.nom ?? f.project?.intitule_projet ?? "Activité"} (${f.type_activite || "Type N/A"})`,
-                participants: Array.isArray(f.project?.participants) ? f.project.participants : [],
-                isProject: Boolean(f.project_id),
-            }));
-    }, [formData.date, frequentations]);
-
-    const selectedFrequentation = useMemo(() => {
-        if (!formData.frequentation_id) return null;
-        return frequentationsForDate.find(f => String(f.value) === String(formData.frequentation_id)) || null;
-    }, [formData.frequentation_id, frequentationsForDate]);
-
-    const occupationFields = [
-        { key: "date", label: "Date", required: true, type: "date" },
-        {
-            key: "frequentation_id",
-            label: "Fréquentation (projet/activité)",
-            required: true,
-            type: "select",
-            options: frequentationsForDate,
-        },
-        {
-            key: "participants",
-            label: "Participants",
-            required: false,
-            type: selectedFrequentation?.isProject ? "checkboxes" : "list",
-            options: selectedFrequentation?.isProject ? selectedFrequentation.participants : [],
-        },
-        {
-            key: "zone_occupee",
-            label: "Zone occupée",
-            required: true,
-            type: "select",
-            options: zoneOccupees.map(z => ({ value: z.name, label: z.name })),
-        },
-        {
-            key: "outillage_machine",
-            label: "Outillage",
-            required: true,
-            type: "select",
-            options: outillages.map(o => ({ value: o.name, label: o.name })),
-        },
-        { key: "heur_debut", label: "Heure début", required: true, type: "time" },
-        { key: "heur_fin", label: "Heure fin", required: false, type: "time" },
-    ];
-
-    const setOccupationFormData = (updater) => {
-        setDirty('occupations', true);
-        setFormData((prev) => (typeof updater === 'function' ? updater(prev) : updater));
+    const handleAddSubmit = async (data) => {
+        try {
+            const payload = {
+                ...data,
+                zone_occupee: data.zone_occupee === 'autre' ? data.custom_zone : data.zone_occupee,
+                outillage_machine: data.outillage_machine === 'autre' ? data.custom_outillage : data.outillage_machine
+            };
+            await api.post("/occupations", payload);
+            // Recharge la liste complète pour garantir la cohérence
+            const freqRes = await api.get("/frequentations");
+            setFrequentations(freqRes.data || []);
+            showToast("✓ Ajouté");
+            setIsModalOpen(false);
+            setDirty('occupations', false);
+        } catch (err) { 
+            console.error(err);
+            showToast(`❌ Erreur`); 
+        }
     };
 
     const onSave = async (modifiedRows) => {
         try {
-            await Promise.all(modifiedRows.map((row) => {
-                const payload = {
-                    frequentation_id: row.frequentation_id,
-                    zone_occupee: row.zone_occupee,
-                    outillage_machine: row.outillage_machine,
-                    heur_debut: row.heur_debut,
-                    heur_fin: row.heur_fin,
-                    participants: row.participants || [],
-                };
-
-                if (row._is_new) {
-                    return api.post("/occupations", payload);
-                }
-
-                return api.put(`/occupations/${row.id}`, payload);
+            const results = await Promise.all(modifiedRows.map(row => {
+                const payload = { ...row };
+                return row._is_new ? api.post("/occupations", payload) : api.put(`/occupations/${row.id}`, payload);
             }));
 
-            showToast(`✓ ${modifiedRows.length} occupation(s) sauvegardée(s)`);
+            setFrequentations(prev => {
+                let next = [...prev];
+                results.forEach(res => {
+                    const occ = res.data.occupation;
+                    next = next.map(f => {
+                        if (f.id !== occ.frequentation_id) return f;
+                        const others = (f.occupations || []).filter(o => o.id !== occ.id);
+                        return { ...f, occupations: [...others, occ] };
+                    });
+                });
+                return next;
+            });
+
+            showToast(`✓ Sauvegardé`);
             setDirty('occupations', false);
-            await refetchData();
-        } catch (err) {
-            const errorMsg = err.response?.data?.message || "Erreur lors de la sauvegarde";
-            showToast(`❌ ${errorMsg}`);
-        }
+        } catch (err) { showToast(`❌ Erreur`); }
     };
 
     const onDelete = async (ids) => {
         try {
             await Promise.all(ids.map(id => api.delete(`/occupations/${id}`)));
-            showToast(`✓ ${ids.length} occupation(s) supprimée(s)`);
+            setFrequentations(prev => prev.map(f => ({
+                ...f, occupations: (f.occupations || []).filter(o => !ids.includes(o.id))
+            })));
+            showToast(`✓ Supprimé`);
             setDirty('occupations', false);
-            await refetchData();
-        } catch (err) {
-            const errorMsg = err.response?.data?.message || "Erreur lors de la suppression";
-            showToast(`❌ ${errorMsg}`);
-        }
+        } catch (err) { showToast(`❌ Erreur`); }
     };
 
-    const handleAddSubmit = async (data) => {
-        try {
-            await api.post("/occupations", {
-                frequentation_id: data.frequentation_id,
-                zone_occupee: data.zone_occupee,
-                outillage_machine: data.outillage_machine,
-                heur_debut: data.heur_debut,
-                heur_fin: data.heur_fin,
-                participants: data.participants || [],
-            });
-            showToast("✓ Occupation ajoutée avec succès");
-            setDirty('occupations', false);
-            setIsModalOpen(false);
-            await refetchData();
-        } catch (err) {
-            const errorMsg = err.response?.data?.message || "Erreur lors de l'ajout de l'occupation";
-            showToast(`❌ ${errorMsg}`);
+    const frequentationsForDate = useMemo(() => {
+        return frequentations.filter(f => f.date === formData.date).map(f => ({
+            value: f.id,
+            label: `${f.activite?.nom ?? f.project?.intitule_projet ?? "Activité"} (${f.type_activite})`,
+            isProject: !!f.project_id
+        }));
+    }, [formData.date, frequentations]);
+
+    const occupationFields = [
+        { key: "date", label: "Date", type: "date" },
+        { key: "frequentation_id", label: "Fréquentation", type: "select", options: frequentationsForDate },
+        { 
+            key: "zone_occupee", label: "Zone occupée", type: "select", 
+            options: [{ label: "--- Autre ---", value: "autre" }, ...zoneOccupees.map(z => ({ value: z.name, label: z.name }))] 
+        },
+        ...(formData.zone_occupee === 'autre' ? [{ key: "custom_zone", label: "Précisez la zone", required: false }] : []),
+        { 
+            key: "outillage_machine", label: "Outillage", type: "select", 
+            options: [{ label: "--- Autre ---", value: "autre" }, ...outillages.map(o => ({ value: o.name, label: o.name }))] 
+        },
+        ...(formData.outillage_machine === 'autre' ? [{ key: "custom_outillage", label: "Précisez l'outillage", required: false }] : []),
+        { key: "heur_debut", label: "Heure début", type: "time" },
+        { key: "heur_fin", label: "Heure fin", type: "time" },
+    ];
+
+    useEffect(() => {
+        if (isModalOpen) {
+            const now = new Date();
+            setFormData({ date: now.toISOString().split("T")[0], heur_debut: now.toTimeString().slice(0, 5), frequentation_id: "" });
         }
-    };
+    }, [isModalOpen]);
 
-    if (loading) {
-        return <TableSkeleton columns={8} rows={8} />;
-    }
-
-    if (error) {
-        return <TableError message={error} onRetry={refetchData} />;
-    }
+    if (loading) return <TableSkeleton columns={8} rows={8} />;
+    if (error) return <TableError message={error} onRetry={() => window.location.reload()} />;
 
     return (
         <>
             <ExcelTable
                 data={rows}
-                columns={COLUMNS.map(col => {
-                    if (col.key === "zone_occupee") {
-                        return { ...col, options: zoneOccupees.map(z => z.name) };
-                    }
-                    if (col.key === "outillage_machine") {
-                        return { ...col, options: outillages.map(o => o.name) };
-                    }
-                    return col;
-                })}
+                columns={COLUMNS.map(c => c.key === "zone_occupee" ? { ...c, options: ["--- Autre ---", ...zoneOccupees.map(z => z.name)] } : c.key === "outillage_machine" ? { ...c, options: ["--- Autre ---", ...outillages.map(o => o.name)] } : c)}
                 onDelete={onDelete}
                 onSave={onSave}
                 addRow={() => setIsModalOpen(true)}
                 onDuplicate={true}
-                onDirtyChange={(dirty) => setDirty('occupations', dirty)}
-                emptyMessage="Aucune occupation trouvée"
+                onDirtyChange={(d) => setDirty('occupations', d)}
             />
-
             <AddRowModal
-                isOpen={isModalOpen}
-                onClose={() => { setIsModalOpen(false); setDirty('occupations', false); }}
-                onSubmit={handleAddSubmit}
-                title="Ajouter une nouvelle occupation"
-                fields={occupationFields}
-                externalFormData={formData}
-                setExternalFormData={setOccupationFormData}
+                isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}
+                onSubmit={handleAddSubmit} title="Ajouter occupation"
+                fields={occupationFields} externalFormData={formData}
+                setExternalFormData={(u) => setFormData(p => typeof u === 'function' ? u(p) : u)}
             />
-
             <ConfirmLeaveModal isOpen={showLeaveModal} onConfirm={confirmLeave} onCancel={cancelLeave} />
             <Toast msg={toast.msg} visible={toast.visible} />
         </>

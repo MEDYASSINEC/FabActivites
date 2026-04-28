@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { 
-    Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, 
-    Tooltip, XAxis, YAxis, AreaChart, Area, LabelList 
+import {
+    Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer,
+    Tooltip, XAxis, YAxis, AreaChart, Area, LabelList
 } from 'recharts';
 import { api } from './api';
 import domtoimage from 'dom-to-image-more';
@@ -59,26 +59,14 @@ const ChartContainer = ({ title, children, onExpand }) => {
     );
 };
 
-const BeneficiaireModal = ({ onClose, frequentations, viewMode, setViewMode }) => {
+const BeneficiaireModal = ({ onClose, from, initialAllMonths }) => {
     const modalRef = useRef(null);
     const [isExporting, setIsExporting] = useState(false);
     const [showMonthPicker, setShowMonthPicker] = useState(false);
+    const [viewMode, setViewMode] = useState('month');
 
-    const formationYearStart = useMemo(() => {
-        const now = new Date();
-        const year = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
-        return `${year}-09`;
-    }, []);
-
-    const allMonths = useMemo(() => {
-        const months = new Set();
-        frequentations.forEach(f => {
-            if (f.date) months.add(f.date.substring(0, 7));
-        });
-        return Array.from(months).filter(m => m >= formationYearStart).sort();
-    }, [frequentations, formationYearStart]);
-
-    const [selectedMonths, setSelectedMonths] = useState(allMonths);
+    const [selectedMonths, setSelectedMonths] = useState(initialAllMonths || []);
+    const [chartData, setChartData] = useState([]);
 
     const exportImage = async () => {
         if (!modalRef.current) return;
@@ -106,52 +94,47 @@ const BeneficiaireModal = ({ onClose, frequentations, viewMode, setViewMode }) =
         finally { setIsExporting(false); }
     };
 
-    const filteredData = useMemo(() => {
-        return frequentations.filter(f => f.date && selectedMonths.includes(f.date.substring(0, 7)));
-    }, [frequentations, selectedMonths]);
-
-    const chartData = useMemo(() => {
-        if (viewMode === 'month') {
-            const months = {};
-            selectedMonths.forEach(m => months[m] = 0);
-            filteredData.forEach(f => {
-                const m = f.date.substring(0, 7);
-                if (months[m] !== undefined) months[m] += Number(f.nb_participants || 0);
-            });
-            return Object.entries(months).sort().map(([name, value]) => ({ name, value }));
-        } else if (viewMode === 'pole') {
-            const poles = {};
-            filteredData.forEach(f => {
-                const p = f.activite_pole || "Autre";
-                poles[p] = (poles[p] || 0) + Number(f.nb_participants || 0);
-            });
-            return Object.entries(poles).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value }));
-        } else {
-            const types = {};
-            filteredData.forEach(f => {
-                const t = f.type_activite || "Autre";
-                types[t] = (types[t] || 0) + Number(f.nb_participants || 0);
-            });
-            return Object.entries(types).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value }));
+    useEffect(() => {
+        if (selectedMonths.length === 0) {
+            setChartData([]);
+            return;
         }
-    }, [filteredData, viewMode, selectedMonths]);
+
+        let url = `/dashboard/beneficiaires/mois?from=${from || ''}`;
+        if (viewMode === 'pole') url += '&groupBy=pole';
+        else if (viewMode === 'type') url += '&groupBy=type';
+
+        selectedMonths.forEach(m => {
+            url += `&mois[]=${m}`;
+        });
+
+        api.get(url).then(r => {
+            let formatted;
+            if (viewMode === 'month') {
+                formatted = r.data.map(d => ({ name: d.mois, value: Number(d.total) }));
+            } else {
+                formatted = r.data.map(d => ({ name: d.categorie, value: Number(d.total) }));
+            }
+            setChartData(formatted);
+        }).catch(err => console.error(err));
+    }, [viewMode, selectedMonths, from]);
 
     return (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
             <div ref={modalRef} style={{ background: '#fff', borderRadius: '30px', width: '100%', maxWidth: '1000px', maxHeight: '95vh', overflowY: 'auto', padding: '40px', position: 'relative', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', animation: 'slideUp 0.3s ease' }}>
-                <div style={{ position: 'absolute', right: '30px', top: '30px', display: 'flex', gap: '10px' }} data-html2canvas-ignore="true">
-                    <button onClick={exportImage} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '0 15px', height: '40px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '600', color: '#4a5568' }}>
+                <div style={{ position: 'absolute', right: '30px', top: '30px', display: 'flex', gap: '10px' }}>
+                    <button onClick={exportImage} data-html2canvas-ignore="true" style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '0 15px', height: '40px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '600', color: '#4a5568' }}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg> PNG
                     </button>
-                    <button onClick={onClose} style={{ background: '#f7fafc', border: '1px solid #e2e8f0', borderRadius: '12px', width: '40px', height: '40px', cursor: 'pointer', fontSize: '20px', color: '#718096' }}>✕</button>
+                    <button onClick={onClose} data-html2canvas-ignore="true" style={{ background: '#f7fafc', border: '1px solid #e2e8f0', borderRadius: '12px', width: '40px', height: '40px', cursor: 'pointer', fontSize: '20px', color: '#718096' }}>✕</button>
                 </div>
-            
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '30px' }} data-html2canvas-ignore="true">
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '30px' }}>
                     <h2 style={{ margin: 0, color: '#1a365d', fontSize: '24px', fontWeight: '800' }}>Analyse des Bénéficiaires</h2>
 
-                    <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center' }} data-html2canvas-ignore="true">
                         <div style={{ display: 'flex', borderRadius: '12px', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-                            {[ { id: 'month', label: 'Par Mois', icon: '📅' }, { id: 'pole', label: 'Par Pôle', icon: '🏢' }, { id: 'type', label: 'Par Type', icon: '⚙️' } ].map(btn => (
+                            {[{ id: 'month', label: 'Par Mois', icon: '📅' }, { id: 'pole', label: 'Par Pôle', icon: '🏢' }, { id: 'type', label: 'Par Type', icon: '⚙️' }].map(btn => (
                                 <button key={btn.id} onClick={() => setViewMode(btn.id)} style={{ padding: '10px 20px', border: 'none', cursor: 'pointer', fontWeight: '600', fontSize: '13px', background: viewMode === btn.id ? '#3182ce' : '#fff', color: viewMode === btn.id ? '#fff' : '#4a5568', borderRight: btn.id !== 'type' ? '1px solid #e2e8f0' : 'none' }}>
                                     {btn.icon} {btn.label}
                                 </button>
@@ -165,7 +148,7 @@ const BeneficiaireModal = ({ onClose, frequentations, viewMode, setViewMode }) =
                     </div>
 
                     {showMonthPicker && (
-                        <div style={{ background: '#f8fafc', borderRadius: '20px', padding: '20px', border: '1px solid #e2e8f0', animation: 'fadeIn 0.2s ease' }}>
+                        <div data-html2canvas-ignore="true" style={{ background: '#f8fafc', borderRadius: '20px', padding: '20px', border: '1px solid #e2e8f0', animation: 'fadeIn 0.2s ease' }}>
                             <MonthPicker mois={selectedMonths} setMois={setSelectedMonths} />
                         </div>
                     )}
@@ -177,14 +160,14 @@ const BeneficiaireModal = ({ onClose, frequentations, viewMode, setViewMode }) =
                             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={viewMode !== 'pole'} vertical={viewMode === 'pole'} />
                             {viewMode === 'pole' ? (
                                 <><XAxis type="number" hide /><YAxis dataKey="name" type="category" width={140} axisLine={false} tickLine={false} />
-                                <Bar dataKey="value" fill="#4fd1c5" radius={[0, 6, 6, 0]} barSize={25} isAnimationActive={!isExporting}>
-                                    <LabelList dataKey="value" position="right" className="bar-label" style={{ fill: '#000', fontSize: 11, fontWeight: 'bold', visibility: isExporting ? 'visible' : 'hidden' }} />
-                                </Bar></>
+                                    <Bar dataKey="value" fill="#4fd1c5" radius={[0, 6, 6, 0]} barSize={25} isAnimationActive={!isExporting}>
+                                        <LabelList dataKey="value" position="right" className="bar-label" style={{ fill: '#000', fontSize: 11, fontWeight: 'bold' }} />
+                                    </Bar></>
                             ) : (
                                 <><XAxis dataKey="name" axisLine={false} tickLine={false} tickFormatter={(t) => viewMode === 'month' ? new Date(t + "-01").toLocaleDateString('fr-FR', { month: 'short' }) : t} /><YAxis axisLine={false} tickLine={false} />
-                                <Bar dataKey="value" fill={viewMode === 'month' ? '#3182ce' : '#63b3ed'} radius={[6, 6, 0, 0]} barSize={40} isAnimationActive={!isExporting}>
-                                    <LabelList dataKey="value" position="top" className="bar-label" style={{ fill: '#000', fontSize: 12, fontWeight: 'bold', visibility: isExporting ? 'visible' : 'hidden' }} />
-                                </Bar></>
+                                    <Bar dataKey="value" fill={viewMode === 'month' ? '#3182ce' : '#63b3ed'} radius={[6, 6, 0, 0]} barSize={40} isAnimationActive={!isExporting}>
+                                        <LabelList dataKey="value" position="top" className="bar-label" style={{ fill: '#000', fontSize: 12, fontWeight: 'bold' }} />
+                                    </Bar></>
                             )}
                             <Tooltip cursor={{ fill: 'rgba(49,130,206,0.05)' }} contentStyle={{ borderRadius: '12px', border: 'none' }} />
                         </BarChart>
@@ -194,48 +177,43 @@ const BeneficiaireModal = ({ onClose, frequentations, viewMode, setViewMode }) =
             <style>{`
                 @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
                 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-                .chart-normal .bar-label { visibility: hidden; pointer-events: none; }
-                .chart-exporting .bar-label { visibility: visible !important; }
+                .bar-label { pointer-events: none; }
             `}</style>
         </div>
     );
 };
 
-export default function ChartBeneficiaires({ frequentations: propFrequentations, from }) {
-    const [frequentations, setFrequentations] = useState(propFrequentations || []);
+export default function ChartBeneficiaires({ from }) {
     const [open, setOpen] = useState(false);
-    const [viewMode, setViewMode] = useState('month');
+    const [allMonthsData, setAllMonthsData] = useState([]);
 
     useEffect(() => {
-        if (!propFrequentations) {
-            api.get(`/frequentations/process?from=${from || ''}`).then(r => setFrequentations(r.data || []));
-        } else {
-            setFrequentations(propFrequentations);
-        }
-    }, [propFrequentations, from]);
+        api.get(`/dashboard/beneficiaires/mois?from=${from || ''}`).then(r => {
+            setAllMonthsData(r.data || []);
+        }).catch(err => console.error(err));
+    }, [from]);
+
+    const formationYearStart = useMemo(() => {
+        const now = new Date();
+        const year = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+        return `${year}-09`;
+    }, []);
+
+    const allMonths = useMemo(() => {
+        return allMonthsData.map(d => d.mois).filter(m => m >= formationYearStart).sort();
+    }, [allMonthsData, formationYearStart]);
 
     const monthlyData = useMemo(() => {
-        const now = new Date();
-        const startYear = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
-        const startMonth = `${startYear}-09`;
-        
-        const months = {};
-        frequentations.forEach(f => {
-            if (!f.date) return;
-            const m = f.date.substring(0, 7);
-            if (m >= startMonth) {
-                months[m] = (months[m] || 0) + Number(f.nb_participants || 0);
-            }
-        });
-        return Object.entries(months).sort().slice(-3).map(([name, value]) => ({ 
-            name: new Date(name + "-01").toLocaleDateString('fr-FR', { month: 'short' }), 
-            value 
+        const filtered = allMonthsData.filter(d => d.mois >= formationYearStart).sort((a, b) => a.mois.localeCompare(b.mois));
+        return filtered.slice(-3).map(d => ({
+            name: new Date(d.mois + "-01").toLocaleDateString('fr-FR', { month: 'short' }),
+            value: Number(d.total)
         }));
-    }, [frequentations]);
+    }, [allMonthsData, formationYearStart]);
 
     return (
         <>
-            <ChartContainer title="Bénéficiaires (Fréquentation)" onExpand={() => setOpen(true)}>
+            <ChartContainer title="Bénéficiaires" onExpand={() => setOpen(true)}>
                 {(isExporting) => (
                     <ResponsiveContainer width="100%" height={300}>
                         <BarChart data={monthlyData}>
@@ -244,7 +222,7 @@ export default function ChartBeneficiaires({ frequentations: propFrequentations,
                             <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#718096' }} />
                             <Tooltip />
                             <Bar dataKey="value" fill="#3182ce" radius={[4, 4, 0, 0]} barSize={32} isAnimationActive={!isExporting}>
-                                <LabelList dataKey="value" position="top" className="bar-label" style={{ fill: '#000', fontSize: 11, fontWeight: 'bold', visibility: isExporting ? 'visible' : 'hidden' }} />
+                                <LabelList dataKey="value" position="top" className="bar-label" style={{ fill: '#000', fontSize: 11, fontWeight: 'bold' }} formatter={(v) => v > 0 ? v : ''} />
                             </Bar>
                         </BarChart>
                     </ResponsiveContainer>
@@ -252,16 +230,14 @@ export default function ChartBeneficiaires({ frequentations: propFrequentations,
             </ChartContainer>
 
             {open && (
-                <BeneficiaireModal 
+                <BeneficiaireModal
                     onClose={() => setOpen(false)}
-                    frequentations={frequentations}
-                    viewMode={viewMode}
-                    setViewMode={setViewMode}
+                    from={from}
+                    initialAllMonths={allMonths}
                 />
             )}
             <style>{`
-                .chart-normal .bar-label { visibility: hidden; pointer-events: none; }
-                .chart-exporting .bar-label { visibility: visible !important; }
+                .bar-label { pointer-events: none; }
             `}</style>
         </>
     );

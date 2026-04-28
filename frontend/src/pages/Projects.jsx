@@ -12,7 +12,6 @@ import { useNavigationGuard } from '../hooks/useNavigationGuard';
 import { useBeforeUnload } from '../hooks/useBeforeUnload';
 import ConfirmLeaveModal from '../components/ConfirmLeaveModal';
 
-// instance axios avec baseURL propre
 const api = axios.create({
     baseURL: import.meta.env.VITE_API_URL,
 });
@@ -30,6 +29,9 @@ function Projects() {
     const { showLeaveModal, confirmLeave, cancelLeave } = useNavigationGuard('projets');
     useBeforeUnload('projets');
 
+    const STATUTS = ['En cours', 'Terminé', 'Suspendu', 'Abandonné'];
+    const SOURCES = ['Interne', 'Externe', 'Etudiant', 'Partenariat'];
+
     const COLUMNS = [
         { key: "intitule_projet", label: "Intitulé projet" },
         { key: "source_du_projet", label: "Source" },
@@ -37,54 +39,54 @@ function Projects() {
         { key: "filiere", label: "Filière" },
         { key: "groupe", label: "Groupe" },
         { key: "responsable_projet", label: "Responsable" },
-        { key: "statut", label: "Statut", type: 'datalist', options: ['En cours', 'Terminé', 'Suspendu', 'Abandonné'] },
+        { key: "statut", label: "Statut", type: 'datalist', options: STATUTS },
         { key: "etape", label: "Étape" },
         { key: "participants", label: "Participants" },
         { key: "dt_debut", label: "Début", type: 'date' },
         { key: "dt_fn_prevu", label: "Fin prévue", type: 'date' },
+        { key: "dt_suspension", label: "Suspension", type: 'date' },
+        { key: "dt_abandon", label: "Abandon", type: 'date' },
         { key: "dt_fn_reel", label: "Fin réelle", type: 'date' },
         { key: "remarques", label: "Remarque" },
     ];
 
     const PROJECT_FIELDS = [
         { key: "intitule_projet", label: "Intitulé projet", required: true },
-        { key: "source_du_projet", label: "Source", required: true },
+        { 
+            key: "source_du_projet", label: "Source", required: true, type: 'select', 
+            options: [{ label: "--- Autre ---", value: "autre" }, ...SOURCES.map(s => ({ value: s, label: s }))]
+        },
+        ...(projectFormData.source_du_projet === 'autre' ? [{ key: "custom_source", label: "Précisez la source", required: true }] : []),
         { key: "pole", label: "Pôle", required: true, type: 'datalist', options: POLES },
         { key: "filiere", label: "Filière", required: true },
         { key: "groupe", label: "Groupe", required: true },
         { key: "responsable_projet", label: "Responsable", required: true },
-        { key: "statut", label: "Statut", required: true, type: 'datalist', options: ['En cours', 'Terminé', 'Suspendu', 'Abandonné'] },
+        { 
+            key: "statut", label: "Statut", required: true, type: 'select', 
+            options: [{ label: "--- Autre ---", value: "autre" }, ...STATUTS.map(s => ({ value: s, label: s }))]
+        },
+        ...(projectFormData.statut === 'autre' ? [{ key: "custom_statut", label: "Précisez le statut", required: true }] : []),
         { key: "etape", label: "Étape", required: true },
         { key: "participants", label: "Participants", required: true, type: 'list' },
         { key: "dt_debut", label: "Date début", required: true, type: 'date' },
         { key: "dt_fn_prevu", label: "Date fin prévue", type: 'date' },
+        { key: "dt_suspension", label: "Date suspension", type: 'date' },
+        { key: "dt_abandon", label: "Date abandon", type: 'date' },
+        { key: "dt_fn_reel", label: "Date fin réelle", type: 'date' },
         { key: "remarques", label: "Remarque", required: false, type: 'textarea' },
     ];
 
     useEffect(() => {
-        const controller = new AbortController();
-
         const fetchProjects = async () => {
             setLoading(true);
-            setError(null);
             try {
-                const res = await api.get("/projects", {
-                    signal: controller.signal,
-                });
+                const res = await api.get("/projects");
                 setProjects(Array.isArray(res.data) ? res.data : res.data.data || []);
             } catch (err) {
-                if (err.code === 'ERR_CANCELED') return;
-                const errorMsg = err.response?.data?.message || err.message || "Erreur de chargement des projets";
-                setError(errorMsg);
-                console.error("Erreur chargement projets:", err);
-            } finally {
-                setLoading(false);
-            }
+                setError(err.response?.data?.message || err.message || "Erreur de chargement");
+            } finally { setLoading(false); }
         };
-
         fetchProjects();
-
-        return () => controller.abort();
     }, []);
 
     const showToast = (msg) => {
@@ -92,111 +94,90 @@ function Projects() {
         setTimeout(() => setToast(t => ({ ...t, visible: false })), 2000);
     };
 
-    const refetchProjects = async () => {
-        setLoading(true);
-        setError(null);
-        try {
-            const res = await api.get("/projects");
-            setProjects(Array.isArray(res.data) ? res.data : res.data.data || []);
-        } catch (err) {
-            const errorMsg = err.response?.data?.message || err.message || "Erreur de chargement";
-            setError(errorMsg);
-            console.error("Erreur chargement projets:", err);
-        } finally {
-            setLoading(false);
-        }
-    };
-
     const onSave = async (modifiedRows) => {
         try {
-            // Correction: forcer responsable_projet à être une string
-            const cleanedRows = modifiedRows.map(row => ({
-                ...row,
-                responsable_projet: typeof row.responsable_projet === 'object' && row.responsable_projet !== null
-                    ? (row.responsable_projet.value || row.responsable_projet.label || '')
-                    : (row.responsable_projet ?? '')
-            }));
-            await Promise.all(
-                cleanedRows.map(row => api.put(`/projects/${row.id}`, row))
+            const results = await Promise.all(
+                modifiedRows.map(row => {
+                    const cleaned = {
+                        ...row,
+                        responsable_projet: typeof row.responsable_projet === 'object' && row.responsable_projet !== null
+                            ? (row.responsable_projet.value || row.responsable_projet.label || '')
+                            : (row.responsable_projet ?? '')
+                    };
+                    return api.put(`/projects/${row.id}`, cleaned);
+                })
             );
-            showToast(`✓ ${modifiedRows.length} modification(s) sauvegardée(s)`);
+
+            setProjects(prev => {
+                const next = [...prev];
+                results.forEach(res => {
+                    const updated = res.data.project;
+                    const idx = next.findIndex(p => p.id === updated.id);
+                    if (idx !== -1) next[idx] = updated;
+                });
+                return next;
+            });
+
+            showToast(`✓ Sauvegardé`);
             setDirty('projets', false);
-            await refetchProjects();
-        } catch (err) {
-            const errorMsg = err.response?.data?.message || "Erreur lors de la sauvegarde";
-            showToast(`❌ ${errorMsg}`);
-            console.error("Erreur save:", err);
-        }
+        } catch (err) { showToast(`❌ Erreur sauvegarde`); }
     };
 
-    const handleAddSubmit = async (formData) => {
+    const handleAddSubmit = async (data) => {
         try {
-            await api.post("/projects", formData);
-            showToast("✓ Projet ajouté avec succès");
+            const payload = {
+                ...data,
+                source_du_projet: data.source_du_projet === 'autre' ? data.custom_source : data.source_du_projet,
+                statut: data.statut === 'autre' ? data.custom_statut : data.statut,
+            };
+            const res = await api.post("/projects", payload);
+            setProjects(prev => [res.data.project, ...prev]);
+            showToast("✓ Projet ajouté");
             setDirty('projets', false);
             setIsModalOpen(false);
-            await refetchProjects();
-        } catch (err) {
-            const errorMsg = err.response?.data?.message || "Erreur lors de l'ajout du projet";
-            showToast(`❌ ${errorMsg}`);
-            console.error("Erreur ajout projet:", err);
-        }
+        } catch (err) { showToast(`❌ Erreur ajout`); }
     };
 
     const onDelete = async (ids) => {
         try {
-            await Promise.all(
-                ids.map(id => api.delete(`/projects/${id}`))
-            );
-            showToast(`✓ ${ids.length} projet(s) supprimé(s)`);
+            await Promise.all(ids.map(id => api.delete(`/projects/${id}`)));
+            setProjects(prev => prev.filter(p => !ids.includes(p.id)));
+            showToast(`✓ Supprimé`);
             setDirty('projets', false);
-            await refetchProjects();
-        } catch (err) {
-            const errorMsg = err.response?.data?.message || "Erreur lors de la suppression";
-            showToast(`❌ ${errorMsg}`);
-            console.error("Erreur delete:", err);
-        }
+        } catch (err) { showToast(`❌ Erreur suppression`); }
     };
 
-    // Construire initialFilters pour ExcelTable
     const initialFilters = useMemo(() => {
         const statutFilter = searchParams.get('statut');
-        if (statutFilter) {
-            return { statut: [statutFilter] };
-        }
-        return null;
+        return statutFilter ? { statut: [statutFilter] } : null;
     }, [searchParams]);
+
+    if (loading) return <TableSkeleton columns={COLUMNS.length} rows={8} />;
+    if (error) return <TableError message={error} onRetry={() => window.location.reload()} />;
 
     return (
         <>
-            {loading === true ? (
-                <TableSkeleton columns={COLUMNS.length} rows={8} />
-            ) : error ? (
-                <TableError message={error} onRetry={refetchProjects} />
-            ) : (
-                <ExcelTable
-                    data={projects}
-                    columns={COLUMNS}
-                    onDelete={onDelete}
-                    onSave={onSave}
-                    addRow={() => { setIsModalOpen(true); setProjectFormData({}); }}
-                    initialFilters={initialFilters}
-                    emptyMessage="Aucun projet enregistré."
-                    onDirtyChange={(dirty) => setDirty('projets', dirty)}
-                    onDuplicate={true}
-                />
-            )}
+            <ExcelTable
+                data={projects}
+                columns={COLUMNS.map(c => c.key === "statut" ? { ...c, options: ["--- Autre ---", ...STATUTS] } : c.key === "source_du_projet" ? { ...c, options: ["--- Autre ---", ...SOURCES] } : c)}
+                onDelete={onDelete}
+                onSave={onSave}
+                addRow={() => { setIsModalOpen(true); setProjectFormData({}); }}
+                initialFilters={initialFilters}
+                onDirtyChange={(dirty) => setDirty('projets', dirty)}
+                onDuplicate={true}
+            />
 
             <AddRowModal
                 isOpen={isModalOpen}
                 onClose={() => { setIsModalOpen(false); setProjectFormData({}); setDirty('projets', false); }}
                 onSubmit={handleAddSubmit}
-                title="Ajouter un Nouveau Projet"
+                title="Ajouter Projet"
                 fields={PROJECT_FIELDS}
                 externalFormData={projectFormData}
-                setExternalFormData={(updater) => {
+                setExternalFormData={(u) => {
                     setDirty('projets', true);
-                    setProjectFormData((prev) => (typeof updater === 'function' ? updater(prev) : updater));
+                    setProjectFormData(prev => typeof u === 'function' ? u(prev) : u);
                 }}
             />
             <ConfirmLeaveModal isOpen={showLeaveModal} onConfirm={confirmLeave} onCancel={cancelLeave} />

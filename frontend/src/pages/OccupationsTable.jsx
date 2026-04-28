@@ -31,7 +31,7 @@ const OccupationsTable = () => {
     outillage_machine: "",
     heur_debut: "",
     heur_fin: "",
-    participants: [],
+    heur_fin: "",
   });
   const [editMode, setEditMode] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -72,17 +72,9 @@ const OccupationsTable = () => {
       outillage_machine: "",
       heur_debut: formatLocalTime(),
       heur_fin: "",
-      participants: [],
+      heur_fin: "",
     });
   };
-
-  const selectedFrequentation = frequentations.find(f => f.id === parseInt(form.frequentation_id));
-  const isProject = !!selectedFrequentation?.project_id;
-  const projectParticipants = isProject && selectedFrequentation?.project?.participants 
-    ? (Array.isArray(selectedFrequentation.project.participants) 
-        ? selectedFrequentation.project.participants 
-        : [])
-    : (Array.isArray(selectedFrequentation?.participants) ? selectedFrequentation.participants : []);
 
   const setOccupationFormData = (updater) => {
     setDirty("occupations", true);
@@ -90,10 +82,7 @@ const OccupationsTable = () => {
   };
 
   const handleSubmit = (row) => {
-    const payload = {
-      ...row,
-      participants: row.participants || [],
-    };
+    const payload = { ...row };
     if (editMode && row.id) {
       api.put(`/occupations/${row.id}`, payload).then((res) => {
         setOccupations((prev) =>
@@ -126,7 +115,6 @@ const OccupationsTable = () => {
     { key: "outillage_machine", label: "Outillage / Machine" },
     { key: "heur_debut", label: "Heure début" },
     { key: "heur_fin", label: "Heure fin" },
-    { key: "participants_list", label: "Participants" },
     { key: "type_activite", label: "Type activité" },
     { key: "projet_activite", label: "Projet / Activité" },
     { key: "pole", label: "Pôle" },
@@ -135,8 +123,7 @@ const OccupationsTable = () => {
 
   const tableData = occupations.map(o => ({
       ...o,
-      date: o.frequentation?.date || '-',
-      participants_list: o.participants?.join(", ") || "",
+      date: o.date || o.frequentation?.date || '-',
       type_activite: o.frequentation?.type_activite || '-',
       projet_activite: o.frequentation?.activite?.nom || o.frequentation?.project?.intitule_projet || '-',
       pole: o.frequentation?.activite?.pole || o.frequentation?.project?.pole || '-',
@@ -171,16 +158,6 @@ const OccupationsTable = () => {
     { key: "heur_debut", label: "Heure début", type: "time", required: true },
     { key: "heur_fin", label: "Heure fin", type: "time", required: false },
   ];
-
-  if (form.frequentation_id) {
-     formFields.push({
-         key: "participants",
-         label: "Participants",
-         required: false,
-         type: isProject ? 'checkboxes' : 'list',
-         options: isProject ? projectParticipants.map(p => p.name || p) : []
-     });
-  }
 
   return (
     <>

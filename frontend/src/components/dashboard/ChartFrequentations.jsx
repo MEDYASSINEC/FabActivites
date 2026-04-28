@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import {
     Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer,
-    Tooltip, XAxis, YAxis, LabelList
+    Tooltip, XAxis, YAxis, LabelList, Cell
 } from 'recharts';
 import { api } from './api';
 import domtoimage from 'dom-to-image-more';
@@ -93,7 +93,7 @@ const FrequentationsModal = ({ onClose, data, keys, viewMode, setViewMode, isSta
     const modalRef = useRef(null);
     const [isExporting, setIsExporting] = useState(false);
     const [showMonthPicker, setShowMonthPicker] = useState(false);
-    
+
     // Tous les mois disponibles dans les données
     const allMonths = useMemo(() => data.map(d => d.mois).sort(), [data]);
     const [selectedMonths, setSelectedMonths] = useState(allMonths);
@@ -101,6 +101,26 @@ const FrequentationsModal = ({ onClose, data, keys, viewMode, setViewMode, isSta
     const filteredData = useMemo(() => {
         return data.filter(d => selectedMonths.includes(d.mois));
     }, [data, selectedMonths]);
+
+    const { compactData, maxBars } = useMemo(() => {
+        let max = 0;
+        const compact = filteredData.map(row => {
+            const active = keys
+                .map((k, idx) => ({ key: k, val: Number(row[k] || 0), color: getBarColor(k, viewMode, idx) }))
+                .filter(item => item.val > 0);
+
+            if (active.length > max) max = active.length;
+
+            const newRow = { ...row };
+            active.forEach((item, i) => {
+                newRow[`val${i}`] = item.val;
+                newRow[`color${i}`] = item.color;
+                newRow[`name${i}`] = item.key;
+            });
+            return newRow;
+        });
+        return { compactData: compact, maxBars: max };
+    }, [filteredData, keys, viewMode]);
 
     const exportImage = async () => {
         if (!modalRef.current) return;
@@ -131,17 +151,17 @@ const FrequentationsModal = ({ onClose, data, keys, viewMode, setViewMode, isSta
     return (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
             <div ref={modalRef} style={{ background: '#fff', borderRadius: '30px', width: '100%', maxWidth: '1000px', maxHeight: '95vh', overflowY: 'auto', padding: '40px', position: 'relative', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', animation: 'slideUp 0.3s ease' }}>
-                <div style={{ position: 'absolute', right: '30px', top: '30px', display: 'flex', gap: '10px' }} data-html2canvas-ignore="true">
-                    <button onClick={exportImage} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '0 15px', height: '40px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '600', color: '#4a5568' }}>
+                <div style={{ position: 'absolute', right: '30px', top: '30px', display: 'flex', gap: '10px' }}>
+                    <button onClick={exportImage} data-html2canvas-ignore="true" style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '0 15px', height: '40px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '600', color: '#4a5568' }}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg> PNG
                     </button>
-                    <button onClick={onClose} style={{ background: '#f7fafc', border: '1px solid #e2e8f0', borderRadius: '12px', width: '40px', height: '40px', cursor: 'pointer', fontSize: '20px', color: '#718096' }}>✕</button>
+                    <button onClick={onClose} data-html2canvas-ignore="true" style={{ background: '#f7fafc', border: '1px solid #e2e8f0', borderRadius: '12px', width: '40px', height: '40px', cursor: 'pointer', fontSize: '20px', color: '#718096' }}>✕</button>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '30px' }} data-html2canvas-ignore="true">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '30px' }}>
                     <h2 style={{ margin: 0, color: '#1a365d', fontSize: '24px', fontWeight: '800' }}>Analyse des Fréquentations</h2>
-                    
-                    <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center' }}>
+
+                    <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center' }} data-html2canvas-ignore="true">
                         <div style={{ background: '#f7fafc', padding: '4px', borderRadius: '12px', display: 'flex', gap: '4px', border: '1px solid #e2e8f0' }}>
                             <button onClick={() => setViewMode('type')} style={{ padding: '6px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '600', background: viewMode === 'type' ? '#fff' : 'transparent', color: viewMode === 'type' ? '#3182ce' : '#718096', boxShadow: viewMode === 'type' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', transition: '0.2s' }}>Par Type</button>
                             <button onClick={() => setViewMode('pole')} style={{ padding: '6px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '600', background: viewMode === 'pole' ? '#fff' : 'transparent', color: viewMode === 'pole' ? '#3182ce' : '#718096', boxShadow: viewMode === 'pole' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', transition: '0.2s' }}>Par Pôle</button>
@@ -157,7 +177,7 @@ const FrequentationsModal = ({ onClose, data, keys, viewMode, setViewMode, isSta
                     </div>
 
                     {showMonthPicker && (
-                        <div style={{ background: '#f8fafc', borderRadius: '20px', padding: '20px', border: '1px solid #e2e8f0', animation: 'fadeIn 0.2s ease' }}>
+                        <div data-html2canvas-ignore="true" style={{ background: '#f8fafc', borderRadius: '20px', padding: '20px', border: '1px solid #e2e8f0', animation: 'fadeIn 0.2s ease' }}>
                             <MonthPicker mois={selectedMonths} setMois={setSelectedMonths} />
                         </div>
                     )}
@@ -165,17 +185,51 @@ const FrequentationsModal = ({ onClose, data, keys, viewMode, setViewMode, isSta
 
                 <div className={isExporting ? 'chart-exporting' : 'chart-normal'} style={{ background: '#f8fafc', borderRadius: '20px', padding: '25px', border: '1px solid #edf2f7' }}>
                     <ResponsiveContainer width="100%" height={400}>
-                        <BarChart data={filteredData}>
+                        <BarChart data={isStacked ? filteredData : compactData} barGap={2}>
                             <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#e2e8f0" />
                             <XAxis dataKey="mois" axisLine={false} tickLine={false} tickFormatter={(t) => new Date(t + "-01").toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' })} />
                             <YAxis axisLine={false} tickLine={false} />
-                            <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} />
-                            <Legend verticalAlign="top" align="right" wrapperStyle={{ paddingBottom: '20px' }} />
-                            {keys.map((k, idx) => (
-                                <Bar key={k} dataKey={k} name={k} stackId={isStacked ? "a" : undefined} fill={getBarColor(k, viewMode, idx)} isAnimationActive={!isExporting}>
-                                    <LabelList dataKey={k} position={isStacked ? "inside" : "top"} className="bar-label" style={{ fill: isStacked ? '#fff' : '#000', fontSize: 10, fontWeight: 'bold', visibility: isExporting ? 'visible' : 'hidden' }} />
-                                </Bar>
-                            ))}
+                            <Tooltip
+                                cursor={{ fill: 'rgba(0,0,0,0.05)' }}
+                                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                                formatter={(value, name, props) => {
+                                    if (isStacked) return [value, name];
+                                    const index = name.replace('val', '');
+                                    const realName = props.payload[`name${index}`];
+                                    return [value, realName];
+                                }}
+                            />
+                            <Legend
+                                verticalAlign="top"
+                                align="right"
+                                wrapperStyle={{ paddingBottom: '20px' }}
+                                content={() => (
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                                        {keys.map((k, idx) => (
+                                            <div key={k} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: '600', color: '#4a5568' }}>
+                                                <div style={{ width: '10px', height: '10px', borderRadius: '3px', backgroundColor: getBarColor(k, viewMode, idx) }} />
+                                                {k}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            />
+                            {isStacked ? (
+                                keys.map((k, idx) => (
+                                    <Bar key={k} dataKey={k} name={k} stackId="a" fill={getBarColor(k, viewMode, idx)} isAnimationActive={!isExporting}>
+                                        <LabelList dataKey={k} position="inside" className="bar-label" style={{ fill: '#fff', fontSize: 10, fontWeight: 'bold' }} formatter={(v) => v > 0 ? v : ''} />
+                                    </Bar>
+                                ))
+                            ) : (
+                                [...Array(maxBars)].map((_, i) => (
+                                    <Bar key={i} dataKey={`val${i}`} isAnimationActive={!isExporting} radius={[4, 4, 0, 0]} barSize={15}>
+                                        {compactData.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={entry[`color${i}`]} />
+                                        ))}
+                                        <LabelList dataKey={`val${i}`} position="top" className="bar-label" style={{ fill: '#4a5568', fontSize: 10, fontWeight: '700' }} formatter={(v) => v > 0 ? v : ''} />
+                                    </Bar>
+                                ))
+                            )}
                         </BarChart>
                     </ResponsiveContainer>
                 </div>
@@ -183,8 +237,7 @@ const FrequentationsModal = ({ onClose, data, keys, viewMode, setViewMode, isSta
             <style>{`
                 @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
                 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-                .chart-normal .bar-label { visibility: hidden; pointer-events: none; }
-                .chart-exporting .bar-label { visibility: visible !important; }
+                .bar-label { pointer-events: none; }
             `}</style>
         </div>
     );
@@ -194,7 +247,7 @@ export default function ChartFrequentations({ from }) {
     const [data, setData] = useState([]);
     const [open, setOpen] = useState(false);
     const [viewMode, setViewMode] = useState('type');
-    const [isStacked, setIsStacked] = useState(true);
+    const [isStacked, setIsStacked] = useState(false);
 
     useEffect(() => {
         api.get(`/dashboard/frequentations/mois?from=${from || ''}&groupBy=${viewMode}`).then(r => setData(r.data || []));
@@ -208,24 +261,26 @@ export default function ChartFrequentations({ from }) {
         return Array.from(set);
     }, [data]);
 
-    const dashboardData = useMemo(() => data.slice(-4), [data]);
+    const dashboardData = useMemo(() => {
+        return data.slice(-3).map(row => {
+            const total = keys.reduce((sum, k) => sum + Number(row[k] || 0), 0);
+            return { ...row, total };
+        });
+    }, [data, keys]);
 
     return (
         <>
-            <ChartContainer title={`Fréquentations (Par ${viewMode === 'type' ? 'Type' : 'Pôle'})`} onExpand={() => setOpen(true)}>
+            <ChartContainer title="Fréquentations" onExpand={() => setOpen(true)}>
                 {(isExporting) => (
                     <ResponsiveContainer width="100%" height={300}>
                         <BarChart data={dashboardData}>
                             <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#edf2f7" />
                             <XAxis dataKey="mois" axisLine={false} tickLine={false} tickFormatter={(t) => new Date(t + "-01").toLocaleDateString('fr-FR', { month: 'short' })} dy={10} />
                             <YAxis axisLine={false} tickLine={false} />
-                            <Tooltip />
-                            <Legend verticalAlign="top" align="right" />
-                            {keys.map((k, idx) => (
-                                <Bar key={k} dataKey={k} name={k} stackId="a" fill={getBarColor(k, viewMode, idx)} isAnimationActive={!isExporting}>
-                                    <LabelList dataKey={k} position="inside" className="bar-label" style={{ fill: '#000', fontSize: 10, fontWeight: 'bold', visibility: isExporting ? 'visible' : 'hidden' }} />
-                                </Bar>
-                            ))}
+                            <Tooltip cursor={{ fill: 'rgba(0,0,0,0.05)' }} />
+                            <Bar dataKey="total" name="Total" fill="#3182ce" isAnimationActive={!isExporting} barSize={35} radius={[6, 6, 0, 0]}>
+                                <LabelList dataKey="total" position="top" className="bar-label" style={{ fill: '#4a5568', fontSize: 11, fontWeight: '800' }} formatter={(v) => v > 0 ? v : ''} />
+                            </Bar>
                         </BarChart>
                     </ResponsiveContainer>
                 )}
@@ -243,8 +298,7 @@ export default function ChartFrequentations({ from }) {
                 />
             )}
             <style>{`
-                .chart-normal .bar-label { visibility: hidden; pointer-events: none; }
-                .chart-exporting .bar-label { visibility: visible !important; }
+                .bar-label { pointer-events: none; }
             `}</style>
         </>
     );
