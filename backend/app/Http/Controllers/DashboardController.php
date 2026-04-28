@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Cache;
 
 class DashboardController extends Controller
 {
@@ -15,82 +16,162 @@ class DashboardController extends Controller
         return $request->query('from', FormationYear::getFormationYearStart()->toDateString());
     }
 
-    private function projectParticipantsExpression(): string
+    private function frequentationParticipantsExpression(): string
     {
-        return "COALESCE(JSON_LENGTH(projects.participants), 0)";
+        return "(SELECT COUNT(*) FROM frequentation_participant WHERE frequentation_participant.frequentation_id = frequentations.id)";
     }
 
-    private function activiteParticipantsExpression(): string
+    /**
+     * Endpoint optimisé pour récupérer tous les KPIs en une seule fois.
+     */
+    public function summary(Request $request): JsonResponse
     {
-        if (Schema::hasColumn('activites', 'nombre_participant')) {
-            return 'COALESCE(activites.nombre_participant, 0)';
-        }
+        $from = $this->fromDate($request);
+        $cacheKey = "dashboard_summary_" . md5($from);
 
-        return 'COALESCE(frequentations.nb_participants, 0)';
+        return Cache::remember($cacheKey, 600, function () use ($from) {
+            // 1. Projets
+            $projetsCount = DB::table('projects')->whereDate('dt_debut', '>=', $from)->count();
+
+            // 1.2 Projets encours
+            $projetsEnCours = DB::table('projects')->whereDate('dt_debut', '>=', $from)->where('statut', 'En cours')->count();
+
+            // 2. Bénéficiaires (uniques depuis fréquentations)
+            $benefTotal = (int) DB::table('frequentations')
+                ->join('frequentation_participant', 'frequentations.id', '=', 'frequentation_participant.frequentation_id')
+                ->whereDate('frequentations.date', '>=', $from)
+                ->count(DB::raw('DISTINCT participant_id'));
+
+            $benefLastMonth = (int) DB::table('frequentations')
+                ->join('frequentation_participant', 'frequentations.id', '=', 'frequentation_participant.frequentation_id')
+                ->whereDate('frequentations.date', '>=', date('Y-m-01'))
+                ->count(DB::raw('DISTINCT participant_id'));
+
+            // 3. Formations
+            $nombreFormations = DB::table('frequentations')
+                ->join('activites', 'frequentations.activite_id', '=', 'activites.id')
+                ->whereDate('frequentations.date', '>=', $from)
+                ->whereRaw("LOWER(frequentations.type_activite) = 'formation'")
+                ->distinct()
+                ->count('activites.nom');
+
+            $dureeTotaleMinutes = (int) DB::table('frequentations')
+                ->whereDate('date', '>=', $from)
+                ->whereRaw("LOWER(type_activite) = 'formation'")
+                ->sum(DB::raw('TIMESTAMPDIFF(MINUTE, heur_debut, heur_fin)'));
+
+            // 4. frequentations
+            $frequentations = DB::table('frequentations')->whereDate('date', '>=', $from)->count();
+
+            $frequentationLastMonth = DB::table('frequentations')->whereDate('date', '>=', date('Y-m-01'))->count();
+
+            // 5. Occupations
+            $occupationsMinutes = DB::table('occupations')->whereDate('date', '>=', $from)->sum(DB::raw('TIMESTAMPDIFF(MINUTE, heur_debut, heur_fin)'));
+            $occupations = $occupationsMinutes / 60;
+
+            $occupationLastMonthMinutes = DB::table('occupations')->whereDate('date', '>=', date('Y-m-01'))->sum(DB::raw('TIMESTAMPDIFF(MINUTE, heur_debut, heur_fin)'));
+            $occupationLastMonth = $occupationLastMonthMinutes / 60;
+            return response()->json([
+                'projets' => $projetsCount,
+                'projets_encours' => $projetsEnCours,
+                'beneficiaires' => [
+                    'total' => $benefTotal,
+                    'last_month' => $benefLastMonth
+                ],
+                'formations' => [
+                    'nombre' => $nombreFormations,
+                    'duree_minutes' => max(0, $dureeTotaleMinutes),
+                ],
+                'frequentations' => [
+                    'total' => $frequentations,
+                    'last_month' => $frequentationLastMonth,
+                ],
+                'occupations' => [
+                    'total' => $occupations,
+                    'last_month' => $occupationLastMonth,
+                ]
+            ]);
+        });
     }
 
     public function projetsStatutsAnnee(Request $request): JsonResponse
     {
         $from = $this->fromDate($request);
+        $cacheKey = "projets_statuts_annee_v2_" . md5($from);
 
-        $enCours = DB::table('projects')
-            ->whereDate('dt_debut', '>=', $from)
-            ->whereRaw("LOWER(statut) NOT IN ('terminé', 'termine')")
-            ->count();
+        return Cache::remember($cacheKey, 600, function () use ($from) {
+            $enCours = DB::table('projects')
+                ->whereDate('dt_debut', '>=', $from)
+                ->whereRaw("LOWER(statut) = 'en cours'")
+                ->count();
 
-        $termines = DB::table('projects')
-            ->whereDate('dt_debut', '>=', $from)
-            ->whereRaw("LOWER(statut) IN ('terminé', 'termine')")
-            ->whereDate('dt_fn_reel', '>=', $from)
-            ->count();
+            $termines = DB::table('projects')
+                ->whereRaw("LOWER(statut) IN ('terminé', 'termine')")
+                ->whereDate('dt_fn_reel', '>=', $from)
+                ->count();
 
-        return response()->json([
-            'en_cours' => $enCours,
-            'termines' => $termines,
-        ]);
+            return response()->json([
+                'en_cours' => $enCours,
+                'termines' => $termines,
+            ]);
+        });
     }
 
     public function beneficiaires(Request $request): JsonResponse
     {
+        // Redirige vers summary si possible côté front pour gagner du temps
         $from = $this->fromDate($request);
+        $cacheKey = "beneficiaires_stats_v2_" . md5($from);
 
-        $parProjets = (int) DB::table('projects')
-            ->whereDate('dt_debut', '>=', $from)
-            ->sum(DB::raw($this->projectParticipantsExpression()));
+        return Cache::remember($cacheKey, 600, function () use ($from) {
+            $totalUnique = (int) DB::table('frequentations')
+                ->join('frequentation_participant', 'frequentations.id', '=', 'frequentation_participant.frequentation_id')
+                ->whereDate('frequentations.date', '>=', $from)
+                ->count(DB::raw('DISTINCT participant_id'));
 
-        $parActivites = (int) DB::table('frequentations')
-            ->join('activites', 'frequentations.activite_id', '=', 'activites.id')
-            ->whereNotNull('frequentations.activite_id')
-            ->whereDate('frequentations.date', '>=', $from)
-            ->sum(DB::raw($this->activiteParticipantsExpression()));
+            $parProjets = (int) DB::table('frequentations')
+                ->join('frequentation_participant', 'frequentations.id', '=', 'frequentation_participant.frequentation_id')
+                ->whereDate('frequentations.date', '>=', $from)
+                ->whereNotNull('project_id')
+                ->count(DB::raw('DISTINCT participant_id'));
 
-        return response()->json([
-            'total' => $parProjets + $parActivites,
-            'par_projets' => $parProjets,
-            'par_activites' => $parActivites,
-        ]);
+            $parActivites = (int) DB::table('frequentations')
+                ->join('frequentation_participant', 'frequentations.id', '=', 'frequentation_participant.frequentation_id')
+                ->whereDate('frequentations.date', '>=', $from)
+                ->whereNotNull('activite_id')
+                ->count(DB::raw('DISTINCT participant_id'));
+
+            return response()->json([
+                'total' => $totalUnique,
+                'par_projets' => $parProjets,
+                'par_activites' => $parActivites,
+            ]);
+        });
     }
 
     public function formations(Request $request): JsonResponse
     {
         $from = $this->fromDate($request);
+        $cacheKey = "formations_stats_" . md5($from);
 
-        $nombreFormations = DB::table('frequentations')
-            ->join('activites', 'frequentations.activite_id', '=', 'activites.id')
-            ->whereDate('frequentations.date', '>=', $from)
-            ->whereRaw("LOWER(frequentations.type_activite) = 'formation'")
-            ->distinct()
-            ->count('activites.nom');
+        return Cache::remember($cacheKey, 600, function () use ($from) {
+            $nombreFormations = DB::table('frequentations')
+                ->join('activites', 'frequentations.activite_id', '=', 'activites.id')
+                ->whereDate('frequentations.date', '>=', $from)
+                ->whereRaw("LOWER(frequentations.type_activite) = 'formation'")
+                ->distinct()
+                ->count('activites.nom');
 
-        $dureeTotaleMinutes = (int) DB::table('frequentations')
-            ->whereDate('date', '>=', $from)
-            ->whereRaw("LOWER(type_activite) = 'formation'")
-            ->sum(DB::raw('TIMESTAMPDIFF(MINUTE, heur_debut, heur_fin)'));
+            $dureeTotaleMinutes = (int) DB::table('frequentations')
+                ->whereDate('date', '>=', $from)
+                ->whereRaw("LOWER(type_activite) = 'formation'")
+                ->sum(DB::raw('TIMESTAMPDIFF(MINUTE, heur_debut, heur_fin)'));
 
-        return response()->json([
-            'nombre_formations' => $nombreFormations,
-            'duree_totale_minutes' => max(0, $dureeTotaleMinutes),
-        ]);
+            return response()->json([
+                'nombre_formations' => $nombreFormations,
+                'duree_totale_minutes' => max(0, $dureeTotaleMinutes),
+            ]);
+        });
     }
 
     public function beneficiairesMois(Request $request): JsonResponse
@@ -99,228 +180,234 @@ class DashboardController extends Controller
         $groupBy = $request->query('groupBy');
         $mois = $request->query('mois');
 
-        if (!$groupBy) {
-            $projectRows = DB::table('projects')
-                ->selectRaw("DATE_FORMAT(dt_debut, '%Y-%m') as mois")
-                ->selectRaw('SUM(' . $this->projectParticipantsExpression() . ') as total')
-                ->whereDate('dt_debut', '>=', $from)
-                ->groupBy('mois')
-                ->get();
+        $cacheKey = "beneficiaires_mois_v3_" . md5($from . $groupBy . (is_array($mois) ? implode(',', $mois) : $mois));
 
-            $activiteRows = DB::table('frequentations')
-                ->join('activites', 'frequentations.activite_id', '=', 'activites.id')
-                ->selectRaw("DATE_FORMAT(frequentations.date, '%Y-%m') as mois")
-                ->selectRaw('SUM(' . $this->activiteParticipantsExpression() . ') as total')
-                ->whereDate('frequentations.date', '>=', $from)
-                ->whereNotNull('frequentations.activite_id')
-                ->groupBy('mois')
-                ->get();
+        return Cache::remember($cacheKey, 600, function () use ($from, $groupBy, $mois) {
+            $query = DB::table('frequentations')
+                ->join('frequentation_participant', 'frequentations.id', '=', 'frequentation_participant.frequentation_id')
+                ->whereDate('frequentations.date', '>=', $from);
 
-            $totaux = [];
-            foreach ($projectRows as $row) {
-                $totaux[$row->mois] = (int) ($totaux[$row->mois] ?? 0) + (int) $row->total;
-            }
-            foreach ($activiteRows as $row) {
-                $totaux[$row->mois] = (int) ($totaux[$row->mois] ?? 0) + (int) $row->total;
-            }
-
-            ksort($totaux);
-
-            return response()->json(array_map(
-                fn($month) => ['mois' => $month, 'total' => $totaux[$month]],
-                array_keys($totaux)
-            ));
-        }
-
-        if ($groupBy === 'pole') {
-            $projectQuery = DB::table('projects')
-                ->selectRaw("COALESCE(pole, 'Non défini') as categorie")
-                ->selectRaw('SUM(' . $this->projectParticipantsExpression() . ') as total')
-                ->whereDate('dt_debut', '>=', $from);
             if ($mois) {
-                $projectQuery->whereRaw("DATE_FORMAT(dt_debut, '%Y-%m') = ?", [$mois]);
-            }
-            $projectRows = $projectQuery->groupBy('categorie')->get();
-
-            $activiteQuery = DB::table('frequentations')
-                ->join('activites', 'frequentations.activite_id', '=', 'activites.id')
-                ->selectRaw("COALESCE(activites.pole, 'Non défini') as categorie")
-                ->selectRaw('SUM(' . $this->activiteParticipantsExpression() . ') as total')
-                ->whereDate('frequentations.date', '>=', $from)
-                ->whereNotNull('frequentations.activite_id');
-            if ($mois) {
-                $activiteQuery->whereRaw("DATE_FORMAT(frequentations.date, '%Y-%m') = ?", [$mois]);
-            }
-            $activiteRows = $activiteQuery->groupBy('categorie')->get();
-
-            $totaux = [];
-            foreach ([$projectRows, $activiteRows] as $rows) {
-                foreach ($rows as $row) {
-                    $totaux[$row->categorie] = ($totaux[$row->categorie] ?? 0) + (int) $row->total;
-                }
+                $monthsArray = is_array($mois) ? $mois : [$mois];
+                $placeholders = implode(',', array_fill(0, count($monthsArray), '?'));
+                $query->whereRaw("DATE_FORMAT(frequentations.date, '%Y-%m') IN ($placeholders)", $monthsArray);
             }
 
-            arsort($totaux);
-            return response()->json(array_map(
-                fn($cat) => ['categorie' => $cat, 'total' => $totaux[$cat]],
-                array_keys($totaux)
-            ));
-        }
+            if (!$groupBy) {
+                // Par mois
+                $rows = $query->selectRaw("DATE_FORMAT(frequentations.date, '%Y-%m') as mois")
+                    ->selectRaw("COUNT(DISTINCT frequentation_participant.participant_id) as total")
+                    ->groupBy('mois')
+                    ->orderBy('mois')
+                    ->get();
+                return response()->json($rows);
+            }
 
-        $query = DB::table('frequentations')
-            ->selectRaw("COALESCE(type_activite, 'Non défini') as categorie")
-            ->selectRaw('SUM(COALESCE(nb_participants, 0)) as total')
-            ->whereDate('date', '>=', $from);
+            if ($groupBy === 'pole') {
+                // Par pôle (projet ou activité)
+                $rows = $query->leftJoin('projects', 'frequentations.project_id', '=', 'projects.id')
+                    ->leftJoin('activites', 'frequentations.activite_id', '=', 'activites.id')
+                    ->selectRaw("COALESCE(projects.pole, activites.pole, 'Non défini') as categorie")
+                    ->selectRaw("COUNT(DISTINCT frequentation_participant.participant_id) as total")
+                    ->groupBy('categorie')
+                    ->orderByDesc('total')
+                    ->get();
+                return response()->json($rows);
+            }
 
-        if ($mois) {
-            $query->whereRaw("DATE_FORMAT(date, '%Y-%m') = ?", [$mois]);
-        }
-
-        $rows = $query->groupBy('categorie')->orderByDesc('total')->get();
-
-        return response()->json($rows);
+            // Par type (default)
+            $rows = $query->selectRaw("COALESCE(type_activite, 'Non défini') as categorie")
+                ->selectRaw("COUNT(DISTINCT frequentation_participant.participant_id) as total")
+                ->groupBy('categorie')
+                ->orderByDesc('total')
+                ->get();
+            return response()->json($rows);
+        });
     }
 
     public function projetsStatuts(Request $request): JsonResponse
     {
         $months = max(1, min(12, (int) $request->query('mois', 1)));
         $includeParticipants = filter_var($request->query('includeParticipants', false), FILTER_VALIDATE_BOOLEAN);
+        $cacheKey = "projets_statuts_graph_v2_" . md5($months . $includeParticipants);
 
-        $start = now()->startOfMonth()->subMonths($months - 1)->toDateString();
+        return Cache::remember($cacheKey, 600, function () use ($months, $includeParticipants) {
+            $start = now()->startOfMonth()->subMonths($months - 1)->toDateString();
 
-        $query = DB::table('projects')
-            ->selectRaw("DATE_FORMAT(dt_debut, '%Y-%m') as mois")
-            ->selectRaw("COALESCE(statut, 'Non défini') as statut")
-            ->whereDate('dt_debut', '>=', $start);
+            // On utilise CASE pour sélectionner la date de référence selon le statut
+            $dateExpression = "CASE 
+                WHEN statut = 'Suspendu' THEN dt_suspension
+                WHEN statut = 'Abandonné' THEN dt_abandon
+                WHEN statut = 'Terminé' THEN dt_fn_reel
+                ELSE dt_debut
+            END";
 
-        if ($includeParticipants) {
-            $query->selectRaw('SUM(' . $this->projectParticipantsExpression() . ') as valeur');
-        } else {
-            $query->selectRaw('COUNT(*) as valeur');
-        }
+            $query = DB::table('projects')
+                ->selectRaw("DATE_FORMAT($dateExpression, '%Y-%m') as mois")
+                ->selectRaw("COALESCE(statut, 'Non défini') as statut")
+                ->whereNotNull(DB::raw($dateExpression))
+                ->whereDate(DB::raw($dateExpression), '>=', $start);
 
-        $rows = $query->groupBy('mois', 'statut')->orderBy('mois')->get();
+            if ($includeParticipants) {
+                $query->selectRaw('SUM((SELECT COUNT(*) FROM participant_project WHERE participant_project.project_id = projects.id)) as valeur');
+            } else {
+                $query->selectRaw('COUNT(*) as valeur');
+            }
 
-        return response()->json($rows);
+            return response()->json($query->groupBy('mois', 'statut')->orderBy('mois')->get());
+        });
     }
 
     public function seances(Request $request): JsonResponse
     {
         $from = $this->fromDate($request);
+        $cacheKey = "seances_stats_" . md5($from);
 
-        // On récupère les données directement depuis la table frequentations
-        $rawFormations = DB::table('frequentations')
-            ->leftJoin('activites', 'frequentations.activite_id', '=', 'activites.id')
-            ->selectRaw("DATE_FORMAT(frequentations.date, '%Y-%m') as mois")
-            ->selectRaw('COALESCE(activites.nom, "Sans nom") as formation_nom')
-            ->selectRaw('COUNT(*) as nb_seances_formation') // Chaque frequentation est une séance
-            ->selectRaw('SUM(TIMESTAMPDIFF(MINUTE, frequentations.heur_debut, frequentations.heur_fin)) as duree_minutes_formation')
-            ->selectRaw('MAX(COALESCE(frequentations.nb_participants, 0)) as nb_participants_formation')
-            ->whereRaw('LOWER(frequentations.type_activite) LIKE ?', ['%formation%'])
-            ->whereDate('frequentations.date', '>=', $from)
-            ->groupBy('mois', 'formation_nom')
-            ->get();
+        return Cache::remember($cacheKey, 600, function () use ($from) {
+            $rawFormations = DB::table('frequentations')
+                ->leftJoin('activites', 'frequentations.activite_id', '=', 'activites.id')
+                ->selectRaw("DATE_FORMAT(frequentations.date, '%Y-%m') as mois")
+                ->selectRaw('COALESCE(activites.nom, "Sans nom") as formation_nom')
+                ->selectRaw('COUNT(*) as nb_seances_formation')
+                ->selectRaw('SUM(TIMESTAMPDIFF(MINUTE, frequentations.heur_debut, frequentations.heur_fin)) as duree_minutes_formation')
+                ->selectRaw('MAX(' . $this->frequentationParticipantsExpression() . ') as nb_participants_formation')
+                ->whereRaw('LOWER(frequentations.type_activite) LIKE ?', ['%formation%'])
+                ->whereDate('frequentations.date', '>=', $from)
+                ->groupBy('mois', 'formation_nom')
+                ->get();
 
-        $results = $rawFormations->groupBy('mois')->map(function ($items, $mois) {
-            return [
-                'mois' => $mois,
-                'nb_formations' => $items->count(), // Nombre de formations uniques par nom
-                'nb_seances' => $items->sum('nb_seances_formation'),
-                'duree_minutes' => $items->sum('duree_minutes_formation'),
-                'nb_participants' => $items->sum('nb_participants_formation'),
-            ];
-        })->values()->sortBy('mois');
+            $results = $rawFormations->groupBy('mois')->map(function ($items, $mois) {
+                return [
+                    'mois' => $mois,
+                    'nb_formations' => $items->count(),
+                    'nb_seances' => $items->sum('nb_seances_formation'),
+                    'duree_minutes' => $items->sum('duree_minutes_formation'),
+                    'nb_participants' => $items->sum('nb_participants_formation'),
+                ];
+            })->values()->sortBy('mois');
 
-        return response()->json($results->values());
+            return response()->json($results->values());
+        });
     }
 
     public function frequentationsMois(Request $request): JsonResponse
     {
         $from = $this->fromDate($request);
         $groupBy = $request->query('groupBy');
+        $cacheKey = "frequentations_mois_" . md5($from . $groupBy);
 
-        $query = DB::table('frequentations')
-            ->selectRaw("DATE_FORMAT(frequentations.date, '%Y-%m') as mois")
-            ->selectRaw('COUNT(*) as total')
-            ->whereDate('frequentations.date', '>=', $from);
+        return Cache::remember($cacheKey, 600, function () use ($from, $groupBy) {
+            $query = DB::table('frequentations')
+                ->selectRaw("DATE_FORMAT(frequentations.date, '%Y-%m') as mois")
+                ->selectRaw('COUNT(*) as total')
+                ->whereDate('frequentations.date', '>=', $from);
 
-        if ($groupBy === 'pole') {
-            $query->leftJoin('activites', 'frequentations.activite_id', '=', 'activites.id')
-                  ->selectRaw("COALESCE(activites.pole, 'Non défini') as categorie")
-                  ->groupBy('mois', 'categorie');
-        } else {
-            $query->selectRaw("COALESCE(type_activite, 'Non défini') as categorie")
-                  ->groupBy('mois', 'categorie');
-        }
-
-        $rows = $query->orderBy('mois')->get();
-
-        $result = [];
-        foreach ($rows as $row) {
-            if (!isset($result[$row->mois])) {
-                $result[$row->mois] = ['mois' => $row->mois];
+            if ($groupBy === 'pole') {
+                $query->leftJoin('activites', 'frequentations.activite_id', '=', 'activites.id')
+                    ->selectRaw("COALESCE(activites.pole, 'Non défini') as categorie")
+                    ->groupBy('mois', 'categorie');
+            } else {
+                $query->selectRaw("COALESCE(type_activite, 'Non défini') as categorie")
+                    ->groupBy('mois', 'categorie');
             }
-            $result[$row->mois][$row->categorie] = (int) $row->total;
-        }
 
-        return response()->json(array_values($result));
+            $rows = $query->orderBy('mois')->get();
+
+            $result = [];
+            foreach ($rows as $row) {
+                if (!isset($result[$row->mois])) {
+                    $result[$row->mois] = ['mois' => $row->mois];
+                }
+                $result[$row->mois][$row->categorie] = (int) $row->total;
+            }
+
+            return response()->json(array_values($result));
+        });
+    }
+
+    public function formationsTable(Request $request): JsonResponse
+    {
+        $from = $this->fromDate($request);
+        $cacheKey = "formations_table_" . md5($from);
+
+        return Cache::remember($cacheKey, 600, function () use ($from) {
+            $rows = DB::table('frequentations')
+                ->leftJoin('activites', 'frequentations.activite_id', '=', 'activites.id')
+                ->selectRaw('COALESCE(activites.nom, "Sans nom") as nom')
+                ->selectRaw('COUNT(*) as nb_seances')
+                ->selectRaw('SUM(TIMESTAMPDIFF(MINUTE, frequentations.heur_debut, frequentations.heur_fin)) as duree_minutes')
+                ->selectRaw('MAX(' . $this->frequentationParticipantsExpression() . ') as max_participants')
+                ->whereRaw('LOWER(frequentations.type_activite) LIKE ?', ['%formation%'])
+                ->whereDate('frequentations.date', '>=', $from)
+                ->groupBy('nom')
+                ->orderByDesc('nb_seances')
+                ->get();
+
+            return response()->json($rows);
+        });
     }
 
     public function occupationsZones(Request $request): JsonResponse
     {
         $from = $this->fromDate($request);
+        $cacheKey = "occupations_zones_" . md5($from);
 
-        $rows = DB::table('occupations')
-            ->join('frequentations', 'occupations.frequentation_id', '=', 'frequentations.id')
-            ->selectRaw("DATE_FORMAT(frequentations.date, '%Y-%m') as mois")
-            ->selectRaw("COALESCE(occupations.zone_occupee, 'Non défini') as zone")
-            ->selectRaw('COUNT(occupations.id) as nb_utilisations')
-            ->selectRaw('SUM(COALESCE(JSON_LENGTH(occupations.participants), 0)) as nb_utilisateurs')
-            ->selectRaw('SUM(TIMESTAMPDIFF(MINUTE, occupations.heur_debut, occupations.heur_fin)) / 60 as heures')
-            ->whereDate('frequentations.date', '>=', $from)
-            ->groupBy('mois', 'zone')
-            ->orderBy('mois')
-            ->get();
+        return Cache::remember($cacheKey, 600, function () use ($from) {
+            $rows = DB::table('occupations')
+                ->join('frequentations', 'occupations.frequentation_id', '=', 'frequentations.id')
+                ->selectRaw("DATE_FORMAT(occupations.date, '%Y-%m') as mois")
+                ->selectRaw("COALESCE(occupations.zone_occupee, 'Non défini') as zone")
+                ->selectRaw('COUNT(occupations.id) as nb_utilisations')
+                ->selectRaw('SUM(TIMESTAMPDIFF(MINUTE, occupations.heur_debut, occupations.heur_fin)) / 60 as heures')
+                ->whereDate('occupations.date', '>=', $from)
+                ->groupBy('mois', 'zone')
+                ->orderBy('mois')
+                ->get();
 
-        return response()->json($rows);
+            return response()->json($rows);
+        });
     }
 
     public function occupationsMois(Request $request): JsonResponse
     {
         $from = $this->fromDate($request);
+        $cacheKey = "occupations_mois_" . md5($from);
 
-        $rows = DB::table('occupations')
-            ->join('frequentations', 'occupations.frequentation_id', '=', 'frequentations.id')
-            ->selectRaw("DATE_FORMAT(frequentations.date, '%Y-%m') as mois")
-            ->selectRaw('COUNT(occupations.id) as count')
-            ->whereDate('frequentations.date', '>=', $from)
-            ->groupBy('mois')
-            ->orderBy('mois')
-            ->get();
+        return Cache::remember($cacheKey, 600, function () use ($from) {
+            $rows = DB::table('occupations')
+                ->selectRaw("DATE_FORMAT(date, '%Y-%m') as mois")
+                ->selectRaw('COUNT(id) as count')
+                ->whereDate('date', '>=', $from)
+                ->groupBy('mois')
+                ->orderBy('mois')
+                ->get();
 
-        return response()->json($rows);
+            return response()->json($rows);
+        });
     }
 
     public function outillagesMois(Request $request): JsonResponse
     {
         $from = $this->fromDate($request);
         $machine = $request->query('machine');
+        $cacheKey = "outillages_mois_" . md5($from . $machine);
 
-        $query = DB::table('occupations')
-            ->join('frequentations', 'occupations.frequentation_id', '=', 'frequentations.id')
-            ->selectRaw("DATE_FORMAT(frequentations.date, '%Y-%m') as mois")
-            ->selectRaw("COALESCE(occupations.outillage_machine, 'Non défini') as machine")
-            ->selectRaw('COUNT(occupations.id) as nb_utilisations')
-            ->selectRaw('SUM(TIMESTAMPDIFF(MINUTE, occupations.heur_debut, occupations.heur_fin)) as duree_minutes')
-            ->selectRaw('SUM(COALESCE(JSON_LENGTH(occupations.participants), 0)) as nb_utilisateurs')
-            ->whereDate('frequentations.date', '>=', $from)
-            ->groupBy('mois', 'machine')
-            ->orderBy('mois');
+        return Cache::remember($cacheKey, 600, function () use ($from, $machine) {
+            $query = DB::table('occupations')
+                ->join('frequentations', 'occupations.frequentation_id', '=', 'frequentations.id')
+                ->selectRaw("DATE_FORMAT(occupations.date, '%Y-%m') as mois")
+                ->selectRaw("COALESCE(occupations.outillage_machine, 'Non défini') as machine")
+                ->selectRaw('COUNT(occupations.id) as nb_utilisations')
+                ->selectRaw('SUM(TIMESTAMPDIFF(MINUTE, occupations.heur_debut, occupations.heur_fin)) as duree_minutes')
+                ->whereDate('occupations.date', '>=', $from)
+                ->groupBy('mois', 'machine')
+                ->orderBy('mois');
 
-        if ($machine) {
-            $query->where('occupations.outillage_machine', $machine);
-        }
+            if ($machine) {
+                $query->where('occupations.outillage_machine', $machine);
+            }
 
-        return response()->json($query->get());
+            return response()->json($query->get());
+        });
     }
 }

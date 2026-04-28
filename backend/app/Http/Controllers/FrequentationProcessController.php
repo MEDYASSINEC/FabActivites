@@ -5,18 +5,68 @@ namespace App\Http\Controllers;
 use App\Models\Activite;
 use App\Models\Frequentation;
 use Illuminate\Http\Request;
-
 use Illuminate\Support\Facades\DB;
 
 class FrequentationProcessController extends Controller
 {
+    private function syncParticipants($model, array $participantNames)
+    {
+        $participantIds = [];
+        foreach ($participantNames as $name) {
+            $name = trim($name);
+            if (empty($name)) continue;
+
+            $participant = \App\Models\Participant::firstOrCreate(['nom' => $name]);
+            $participantIds[] = $participant->id;
+        }
+        $model->participants()->sync($participantIds);
+    }
+
+    /**
+     * Formate une fréquentation avec ses relations pour le frontend.
+     */
+    private function formatFrequentation(Frequentation $f)
+    {
+        // On s'assure que les relations sont chargées
+        $f->loadMissing(['activite', 'project', 'occupations', 'participants', 'project.participants']);
+
+        $frequentationParticipants = $f->participants->pluck('nom')->toArray();
+        $projectParticipantsCount = $f->project ? $f->project->participants->count() : 0;
+
+        return [
+            'id'                   => $f->id,
+            'date'                 => $f->date,
+            'type_activite'        => $f->type_activite,
+            'etape'                => $f->etape,
+            'intervenant'          => $f->intervenant,
+            'role'                 => $f->role,
+            'activite_nom'         => $f->activite?->nom ?? $f->project?->intitule_projet,
+            'activite_pole'        => $f->activite?->pole ?? $f->project?->pole,
+            'activite_filiere'     => $f->activite?->filiere ?? $f->project?->filiere,
+            'activite_groupe'      => $f->activite?->groupe ?? $f->project?->groupe,
+            'activite_id'          => $f->activite_id,
+            'project_id'           => $f->project_id, // Uniformisé avec le front
+            'heur_debut'           => $f->heur_debut,
+            'heur_fin'             => $f->heur_fin,
+            'participants'         => $frequentationParticipants,
+            'project'              => $f->project ? array_merge($f->project->toArray(), ['participants' => $f->project->participants->pluck('nom')->toArray()]) : null,
+            'nb_participants'      => count($frequentationParticipants) ?: $projectParticipantsCount,
+        ];
+    }
+
+    public function index()
+    {
+        $frequentations = Frequentation::with(['activite', 'project', 'occupations'])->get();
+        $data = $frequentations->map(fn($f) => $this->formatFrequentation($f));
+        return response()->json($data);
+    }
+
     public function createFrequentation(Request $request)
     {
         try {
-            $result = DB::transaction(function () use ($request) {
+            $frequentation = DB::transaction(function () use ($request) {
                 $activiteId = null;
 
-                /* création activité (seulement si pas de projet sélectionné) */
                 if (!$request->project_id && $request->has('activite')) {
                     $activite = Activite::create([
                         'nom'     => $request->activite['nom'] ?? null,
@@ -27,8 +77,7 @@ class FrequentationProcessController extends Controller
                     $activiteId = $activite->id;
                 }
 
-                /* création fréquentation */
-                $frequentation = Frequentation::create([
+                $f = Frequentation::create([
                     'type_activite' => $request->type_activite,
                     'project_id'    => $request->project_id,
                     'activite_id'   => $activiteId,
@@ -38,87 +87,44 @@ class FrequentationProcessController extends Controller
                     'heur_debut'    => $request->heur_debut,
                     'heur_fin'      => $request->heur_fin,
                     'date'          => $request->date,
-                    'nb_participants' => $request->nb_participants ?: null,
                 ]);
 
-                return $frequentation;
+                if ($request->has('participants') && is_array($request->participants)) {
+                    $this->syncParticipants($f, $request->participants);
+                }
+
+                return $f;
             });
 
             return response()->json([
                 'message' => 'Fréquentation créée avec succès.',
-                'data'    => $result
+                'data'    => $this->formatFrequentation($frequentation)
             ], 201);
 
         } catch (\Exception $e) {
             return response()->json([
-                'message' => 'Erreur lors de la création de la fréquentation.',
+                'message' => 'Erreur lors de la création.',
                 'error'   => $e->getMessage()
             ], 500);
         }
     }
 
-    public function index()
-    {
-        $frequentations = Frequentation::with(['activite', 'project', 'occupations'])->get();
-        
-        $data = $frequentations->map(function ($f) {
-            // Calculer le nombre total de participants uniques sur toutes les occupations de cette séance
-            $allParticipants = $f->occupations->flatMap(function ($occ) {
-                return $occ->participants ?? [];
-            })
-            ->map(fn($p) => trim(mb_strtolower($p))) // On normalise pour éviter les doublons dus aux espaces ou à la casse
-            ->filter() // On retire les entrées vides
-            ->unique();
-
-            // Fallback strategy for participants count:
-            // 1. Manual count ($f->nb_participants)
-            // 2. Occupations participants count ($allParticipants)
-            // 3. Project participants count (if it's a project development session)
-            $projectParticipantsCount = 0;
-            if ($f->project && is_array($f->project->participants)) {
-                $projectParticipantsCount = count(array_filter($f->project->participants));
-            }
-
-            return [
-                'id'                   => $f->id,
-                'date'                 => $f->date,
-                'type_activite'        => $f->type_activite,
-                'etape'                => $f->etape,
-                'intervenant'          => $f->intervenant,
-                'role'                 => $f->role,
-                'activite_nom'         => $f->activite?->nom ?? $f->project?->intitule_projet,
-                'activite_pole'        => $f->activite?->pole ?? $f->project?->pole,
-                'activite_filiere'     => $f->activite?->filiere ?? $f->project?->filiere,
-                'activite_groupe'      => $f->activite?->groupe ?? $f->project?->groupe,
-                'activite_id'          => $f->activite_id,
-                'projet_id'            => $f->project_id,
-                'heur_debut'           => $f->heur_debut,
-                'heur_fin'             => $f->heur_fin,
-                'nb_participants'      => (int) ($f->nb_participants ?? ($allParticipants->count() ?: $projectParticipantsCount)),
-            ];
-        });
-
-        return response()->json($data);
-    }
-
     public function updateFrequentation(Request $request, $id)
     {
         try {
-            DB::transaction(function () use ($request, $id) {
-                $frequentation = Frequentation::findOrFail($id);
+            $frequentation = DB::transaction(function () use ($request, $id) {
+                $f = Frequentation::findOrFail($id);
 
-                // mettre à jour activité
-                if ($frequentation->activite && $request->has('activite')) {
-                    $frequentation->activite->update([
-                        'nom'     => $request->activite['nom'] ?? $frequentation->activite->nom,
-                        'pole'    => $request->activite['pole'] ?? $frequentation->activite->pole,
-                        'filiere' => $request->activite['filiere'] ?? $frequentation->activite->filiere,
-                        'groupe'  => $request->activite['groupe'] ?? $frequentation->activite->groupe
+                if ($f->activite && $request->has('activite')) {
+                    $f->activite->update([
+                        'nom'     => $request->activite['nom'] ?? $f->activite->nom,
+                        'pole'    => $request->activite['pole'] ?? $f->activite->pole,
+                        'filiere' => $request->activite['filiere'] ?? $f->activite->filiere,
+                        'groupe'  => $request->activite['groupe'] ?? $f->activite->groupe
                     ]);
                 }
 
-                // Mettre à jour fréquentation
-                $frequentation->update([
+                $f->update([
                     'type_activite' => $request->type_activite,
                     'project_id'    => $request->project_id,
                     'date'          => $request->date,
@@ -127,11 +133,19 @@ class FrequentationProcessController extends Controller
                     'role'          => $request->role,
                     'heur_debut'    => $request->heur_debut,
                     'heur_fin'      => $request->heur_fin,
-                    'nb_participants' => $request->nb_participants ?: null,
                 ]);
+
+                if ($request->has('participants') && is_array($request->participants)) {
+                    $this->syncParticipants($f, $request->participants);
+                }
+
+                return $f;
             });
 
-            return response()->json(['message' => 'Fréquentation mise à jour.']);
+            return response()->json([
+                'message' => 'Fréquentation mise à jour.',
+                'data'    => $this->formatFrequentation($frequentation)
+            ]);
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Erreur lors de la mise à jour.',
@@ -139,18 +153,15 @@ class FrequentationProcessController extends Controller
             ], 500);
         }
     }
+
     public function deleteFrequentation($id)
     {
         try {
             DB::transaction(function () use ($id) {
                 $frequentation = Frequentation::findOrFail($id);
-
-                // Les occupations sont supprimées en cascade grâce à la clé étrangère on delete cascade.
-                // Donc il suffit de supprimer l'activité si elle est orpheline.
                 if ($frequentation->activite) {
                     $frequentation->activite->delete();
                 }
-
                 $frequentation->delete();
             });
 

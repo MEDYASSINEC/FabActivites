@@ -7,12 +7,29 @@ use Illuminate\Http\Request;
 
 class ProjectController extends Controller
 {
+    private function syncParticipants($model, array $participantNames)
+    {
+        $participantIds = [];
+        foreach ($participantNames as $name) {
+            $name = trim($name);
+            if (empty($name)) continue;
+
+            $participant = \App\Models\Participant::firstOrCreate(['nom' => $name]);
+            $participantIds[] = $participant->id;
+        }
+        $model->participants()->sync($participantIds);
+    }
+
     /**
      * Display a listing of the resource.
      */
     public function index()
     {
-        $projects = Project::all();
+        $projects = Project::with('participants')->get()->map(function ($p) {
+            $array = $p->toArray();
+            $array['participants'] = $p->participants->pluck('nom')->toArray();
+            return $array;
+        });
 
         return response()->json($projects);
     }
@@ -41,11 +58,30 @@ class ProjectController extends Controller
                 'dt_fn_reel' => 'nullable|date',
                 'remarques' => 'nullable|string',
             ]);
+
+            $participants = $validated['participants'] ?? [];
+            unset($validated['participants']);
+
+            // Gestion automatique des dates selon le statut
+            $today = date('Y-m-d');
+            if ($validated['statut'] === 'Suspendu') {
+                $validated['dt_suspension'] = $today;
+            } elseif ($validated['statut'] === 'Abandonné') {
+                $validated['dt_abandon'] = $today;
+            } elseif ($validated['statut'] === 'Terminé') {
+                $validated['dt_fn_reel'] = $today;
+            }
+
             $project = Project::create($validated);
+            $this->syncParticipants($project, $participants);
+
+            $project->load('participants');
+            $array = $project->toArray();
+            $array['participants'] = $project->participants->pluck('nom')->toArray();
 
             return response()->json([
                 'message' => 'Projet crée avec succés.',
-                'project' => $project
+                'project' => $array
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -61,9 +97,12 @@ class ProjectController extends Controller
     public function show($id)
     {
         try {
-            $project = Project::findOrFail($id);
+            $project = Project::with('participants')->findOrFail($id);
+            
+            $array = $project->toArray();
+            $array['participants'] = $project->participants->pluck('nom')->toArray();
 
-            return response()->json($project);
+            return response()->json($array);
         } catch (\Exception $e) {
             return response()->json([
                 'message'=> 'Erreur lors de récupération du projet',
@@ -98,11 +137,34 @@ class ProjectController extends Controller
                 'remarques' => 'sometimes|nullable|string',
             ]);
 
+            $participants = $validated['participants'] ?? null;
+            unset($validated['participants']);
+
+            // Gestion automatique des dates selon le statut si celui-ci a changé
+            if (isset($validated['statut']) && $validated['statut'] !== $project->statut) {
+                $today = date('Y-m-d');
+                if ($validated['statut'] === 'Suspendu') {
+                    $validated['dt_suspension'] = $today;
+                } elseif ($validated['statut'] === 'Abandonné') {
+                    $validated['dt_abandon'] = $today;
+                } elseif ($validated['statut'] === 'Terminé') {
+                    $validated['dt_fn_reel'] = $today;
+                }
+            }
+
             $project->update($validated);
+
+            if ($participants !== null) {
+                $this->syncParticipants($project, $participants);
+            }
+
+            $project->load('participants');
+            $array = $project->toArray();
+            $array['participants'] = $project->participants->pluck('nom')->toArray();
 
             return response()->json([
                 'message'=> 'Projet mis à jour avec succès.',
-                'projet' => $project
+                'project' => $array
             ]);
         } catch (\Exception $e) {
             return response()->json([

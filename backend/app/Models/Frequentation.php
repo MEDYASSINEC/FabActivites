@@ -34,4 +34,8 @@ class Frequentation extends Model
     public function project (){
         return $this->belongsTo(Project::class);
     }
+
+    public function participants (){
+        return $this->belongsToMany(Participant::class);
+    }
 }

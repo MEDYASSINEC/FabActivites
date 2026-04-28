@@ -34,6 +34,7 @@ Route::apiResource('outillages', OutillageController::class);
 
 
 Route::prefix('dashboard')->group(function () {
+    Route::get('/summary', [DashboardController::class, 'summary']);
     Route::get('/projets/statuts-annee', [DashboardController::class, 'projetsStatutsAnnee']);
     Route::get('/beneficiaires', [DashboardController::class, 'beneficiaires']);
     Route::get('/formations', [DashboardController::class, 'formations']);
@@ -44,4 +45,5 @@ Route::prefix('dashboard')->group(function () {
     Route::get('/occupations/mois', [DashboardController::class, 'occupationsMois']);
     Route::get('/occupations/zones', [DashboardController::class, 'occupationsZones']);
     Route::get('/outillages/mois', [DashboardController::class, 'outillagesMois']);
+    Route::get('/formations/table', [DashboardController::class, 'formationsTable']);
 });

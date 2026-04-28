@@ -12,11 +12,7 @@ class Occupation extends Model
         'heur_debut',
         'heur_fin',
         'frequentation_id',
-        'participants',
-    ];
-
-    protected $casts = [
-        'participants' => 'array',
+        'date'
     ];
 
     // Une occupation appartient à une fréquentation
