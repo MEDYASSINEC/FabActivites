@@ -89,10 +89,13 @@ if (-not (Test-Path $phpDir)) {
     $iniContent = $iniContent -replace ';extension_dir = "ext"', 'extension_dir = "ext"'
     $iniContent = $iniContent -replace ';extension=curl', 'extension=curl'
     $iniContent = $iniContent -replace ';extension=fileinfo', 'extension=fileinfo'
+    $iniContent = $iniContent -replace ';extension=gd', 'extension=gd'
     $iniContent = $iniContent -replace ';extension=mbstring', 'extension=mbstring'
     $iniContent = $iniContent -replace ';extension=openssl', 'extension=openssl'
+    $iniContent = $iniContent -replace ';extension=pdo_mysql', 'extension=pdo_mysql'
     $iniContent = $iniContent -replace ';extension=pdo_sqlite', 'extension=pdo_sqlite'
     $iniContent = $iniContent -replace ';extension=sqlite3', 'extension=sqlite3'
+    $iniContent = $iniContent -replace ';extension=zip', 'extension=zip'
     $iniContent = $iniContent -replace 'memory_limit = 128M', 'memory_limit = 512M'
     
     Set-Content -Path $iniFile -Value $iniContent
