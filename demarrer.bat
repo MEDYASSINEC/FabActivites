@@ -22,10 +22,14 @@ echo =========================================================
 echo.
 
 echo [1/2] Demarrage du serveur Backend (Laravel)...
-powershell -NoProfile -Command "Start-Process cmd -ArgumentList '/k php artisan serve --port=8000' -WorkingDirectory '%PROJECT_ROOT%backend'"
+cd /d "%PROJECT_ROOT%backend"
+start "Backend - Laravel" cmd /k php artisan serve --port=8000
 
 echo [2/2] Demarrage du serveur Frontend (React Build)...
-powershell -NoProfile -Command "Start-Process cmd -ArgumentList '/k npm run preview -- --port 5173' -WorkingDirectory '%PROJECT_ROOT%frontend'"
+cd /d "%PROJECT_ROOT%frontend"
+start "Frontend - React" cmd /k npm run preview -- --port 5173
+
+cd /d "%PROJECT_ROOT%"
 
 echo.
 echo [INFO] Serveurs lances avec succes en arriere-plan.
