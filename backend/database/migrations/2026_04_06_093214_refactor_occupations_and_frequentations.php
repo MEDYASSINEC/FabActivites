@@ -27,9 +27,8 @@ return new class extends Migration
         // 3. Nettoie la table frequentations
         Schema::table('frequentations', function (Blueprint $table) {
             if (Schema::hasColumn('frequentations', 'occupation_id')) {
-                // Drop foreign key constraints before dropping column
-                // Just dropping column might fail on SQL Server/MySQL without dropping FK first
-                // Let's drop constraint by name convention: table_column_foreign
+                // Drop unique constraint/index and foreign key before dropping column
+                $table->dropUnique(['occupation_id']);
                 $table->dropForeign(['occupation_id']);
                 $table->dropColumn('occupation_id');
             }
