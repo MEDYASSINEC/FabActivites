@@ -136,12 +136,15 @@ Write-Host "`nCréation du raccourci sur le Bureau..." -ForegroundColor Yellow
 try {
     $WScriptShell = New-Object -ComObject WScript.Shell
     $DesktopPath = [System.Environment]::GetFolderPath("Desktop")
-    $Shortcut = $WScriptShell.CreateShortcut(Join-Path $DesktopPath "FabActivités.lnk")
-    $Shortcut.TargetPath = Join-Path $PSScriptRoot "demarrer.bat"
+    $shortcutPath = Join-Path $DesktopPath "FabActivites.lnk"
+    $targetPath = Join-Path $PSScriptRoot "demarrer.bat"
+    
+    $Shortcut = $WScriptShell.CreateShortcut($shortcutPath)
+    $Shortcut.TargetPath = $targetPath
     $Shortcut.WorkingDirectory = $PSScriptRoot
     $Shortcut.IconLocation = "shell32.dll,14" # Icône de disque/dossier
     $Shortcut.Save()
-    Write-Host "Raccourci 'FabActivités' créé sur le Bureau !" -ForegroundColor Green
+    Write-Host "Raccourci 'FabActivites' créé sur le Bureau !" -ForegroundColor Green
 } catch {
     Write-Warning "Création du raccourci échouée."
 }
