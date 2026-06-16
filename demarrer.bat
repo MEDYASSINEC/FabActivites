@@ -23,11 +23,11 @@ echo.
 
 echo [1/2] Demarrage du serveur Backend (Laravel)...
 cd /d "%PROJECT_ROOT%backend"
-start "Backend - Laravel" cmd /k php artisan serve --port=8000
+start "Backend - Laravel" /min cmd /c php artisan serve --port=8000
 
 echo [2/2] Demarrage du serveur Frontend (React Build)...
 cd /d "%PROJECT_ROOT%frontend"
-start "Frontend - React" cmd /k npm run preview -- --port 5173
+start "Frontend - React" /min cmd /c npm run preview -- --port 5173
 
 cd /d "%PROJECT_ROOT%"
 
