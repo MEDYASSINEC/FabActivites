@@ -79,12 +79,10 @@ class FrequentationSeeder extends Seeder
                 $activite = DB::table('activites')->where('nom', $session['nom_activite'])->first();
             }
 
-            DB::table('frequentations')->insert([
-                'participants' => json_encode($session['participants']),
+            $frequentationId = DB::table('frequentations')->insertGetId([
                 'type_activite' => $session['type_activite'],
                 'project_id' => $project ? $project->id : null,
                 'activite_id' => $activite ? $activite->id : null,
-                'occupation_id' => null, // à relier si les données d'occupation sont disponibles
                 'etape' => $session['etape'],
                 'intervenant' => $session['intervenant'],
                 'role' => $session['role'],
@@ -94,6 +92,25 @@ class FrequentationSeeder extends Seeder
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
+
+            foreach ($session['participants'] as $name) {
+                $name = trim($name);
+                if (empty($name)) continue;
+
+                $participantId = DB::table('participants')->where('nom', $name)->value('id');
+                if (!$participantId) {
+                    $participantId = DB::table('participants')->insertGetId([
+                        'nom' => $name,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                }
+
+                DB::table('frequentation_participant')->insertOrIgnore([
+                    'frequentation_id' => $frequentationId,
+                    'participant_id' => $participantId,
+                ]);
+            }
         }
     }
 }
