@@ -35,7 +35,8 @@ echo.
 :: Laisser une seconde de delai pour que les serveurs demarrent avant d'ouvrir le navigateur
 timeout /t 2 /nobreak >nul
 
-start http://localhost:5173
+powershell -NoProfile -Command "try { Start-Process msedge '--app=http://localhost:5173' } catch { Start-Process 'http://localhost:5173' }"
+
 
 echo Ouvrez http://localhost:5173 si votre navigateur ne s'est pas lance automatiquement.
 echo.

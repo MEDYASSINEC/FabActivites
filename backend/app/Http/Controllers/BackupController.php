@@ -94,16 +94,16 @@ class BackupController extends Controller
             'confirm' => 'required|accepted',
         ]);
 
+        $driver = DB::getDriverName();
+
+        if ($driver === 'sqlite') {
+            DB::statement('PRAGMA foreign_keys = OFF');
+        } else {
+            DB::statement('SET FOREIGN_KEY_CHECKS=0');
+        }
+
         try {
             DB::beginTransaction();
-
-            $driver = DB::getDriverName();
-            
-            if ($driver === 'sqlite') {
-                DB::statement('PRAGMA foreign_keys = OFF');
-            } else {
-                DB::statement('SET FOREIGN_KEY_CHECKS=0');
-            }
 
             DB::table('frequentation_participant')->truncate();
             DB::table('participant_project')->truncate();
@@ -112,12 +112,6 @@ class BackupController extends Controller
             DB::table('projects')->truncate();
             DB::table('activites')->truncate();
             DB::table('participants')->truncate();
-
-            if ($driver === 'sqlite') {
-                DB::statement('PRAGMA foreign_keys = ON');
-            } else {
-                DB::statement('SET FOREIGN_KEY_CHECKS=1');
-            }
 
             DB::commit();
 
@@ -133,6 +127,12 @@ class BackupController extends Controller
                 'message' => 'Erreur lors de la réinitialisation de la base de données.',
                 'error' => $e->getMessage()
             ], 500);
+        } finally {
+            if ($driver === 'sqlite') {
+                DB::statement('PRAGMA foreign_keys = ON');
+            } else {
+                DB::statement('SET FOREIGN_KEY_CHECKS=1');
+            }
         }
     }
 }
