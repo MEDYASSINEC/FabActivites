@@ -22,14 +22,10 @@ echo =========================================================
 echo.
 
 echo [1/2] Demarrage du serveur Backend (Laravel)...
-cd /d "%PROJECT_ROOT%backend"
-start "Backend - Laravel" /min cmd /c php artisan serve --port=8000
+powershell -NoProfile -Command "Start-Process cmd -ArgumentList '/c php artisan serve --port=8000' -WorkingDirectory '%PROJECT_ROOT%backend' -WindowStyle Hidden"
 
 echo [2/2] Demarrage du serveur Frontend (React Build)...
-cd /d "%PROJECT_ROOT%frontend"
-start "Frontend - React" /min cmd /c npm run preview -- --port 5173
-
-cd /d "%PROJECT_ROOT%"
+powershell -NoProfile -Command "Start-Process cmd -ArgumentList '/c npm run preview -- --port 5173' -WorkingDirectory '%PROJECT_ROOT%frontend' -WindowStyle Hidden"
 
 echo.
 echo [INFO] Serveurs lances avec succes en arriere-plan.
@@ -46,6 +42,6 @@ echo.
 echo Pour arreter l'application, fermez simplement cette fenetre (Appuyez sur une touche).
 echo.
 pause
-taskkill /fi "windowtitle eq Backend - Laravel*" /f >nul 2>&1
-taskkill /fi "windowtitle eq Frontend - React*" /f >nul 2>&1
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr :8000 ^| findstr LISTENING') do taskkill /f /pid %%a >nul 2>&1
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr :5173 ^| findstr LISTENING') do taskkill /f /pid %%a >nul 2>&1
 echo Serveurs arretes.
