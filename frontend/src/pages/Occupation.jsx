@@ -14,6 +14,37 @@ const api = axios.create({
     baseURL: import.meta.env.VITE_API_URL,
 });
 
+const calculateDuration = (heurDebut, heurFin) => {
+    if (!heurDebut || !heurFin) return "";
+    const parseTime = (timeStr) => {
+        const parts = timeStr.split(":");
+        if (parts.length < 2) return null;
+        const h = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10);
+        if (isNaN(h) || isNaN(m)) return null;
+        return h * 60 + m;
+    };
+    const startMin = parseTime(heurDebut);
+    const endMin = parseTime(heurFin);
+    if (startMin === null || endMin === null) return "";
+    
+    let diffMin = endMin - startMin;
+    if (diffMin < 0) {
+        diffMin += 24 * 60;
+    }
+    
+    const hours = Math.floor(diffMin / 60);
+    const minutes = diffMin % 60;
+    
+    if (hours === 0) {
+        return `${minutes} min`;
+    }
+    if (minutes === 0) {
+        return `${hours} h`;
+    }
+    return `${hours} h ${minutes} min`;
+};
+
 const COLUMNS = [
     { key: "date", label: "Date", type: "date" },
     { key: "type_activite", label: "Type activité" },
@@ -22,6 +53,7 @@ const COLUMNS = [
     { key: "outillage_machine", label: "Outillage / Machine utilisée", type: "datalist" },
     { key: "heur_debut", label: "Heure début", type: "time" },
     { key: "heur_fin", label: "Heure fin", type: "time" },
+    { key: "duree", label: "Durée", readOnly: true, compute: (row) => calculateDuration(row.heur_debut, row.heur_fin) },
 ];
 
 function Occupation() {
@@ -58,6 +90,7 @@ function Occupation() {
                 outillage_machine: occ.outillage_machine,
                 heur_debut: occ.heur_debut,
                 heur_fin: occ.heur_fin,
+                duree: calculateDuration(occ.heur_debut, occ.heur_fin),
                 project_id: f.project_id,
                 project_participants: Array.isArray(f.project?.participants) ? f.project.participants : [],
             }));

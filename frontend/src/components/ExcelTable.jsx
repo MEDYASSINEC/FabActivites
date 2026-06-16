@@ -13,11 +13,27 @@ function parseNum(s) {
 
 // ── Main Component ────────────────────────────────────────────
 export default function ExcelTable({ data, columns, onDelete, onSave, addRow, getRowClassName, initialFilters, onDuplicate, onDirtyChange, emptyMessage = "Aucune donnée trouvée" }) {
-    const rowFromApi = useCallback((obj) => ({
-        id: obj.id,
-        cells: ["", ...columns.map(c => obj[c.key] ?? "")],
-        _raw: obj,
-    }), [columns]);
+    const recomputeRow = useCallback((raw, cells) => {
+        columns.forEach((col, idx) => {
+            if (col.compute) {
+                const cellIdx = idx + 1;
+                const computedVal = col.compute(raw);
+                cells[cellIdx] = computedVal;
+                raw[col.key] = computedVal;
+            }
+        });
+    }, [columns]);
+
+    const rowFromApi = useCallback((obj) => {
+        const cells = ["", ...columns.map(c => obj[c.key] ?? "")];
+        const raw = { ...obj };
+        recomputeRow(raw, cells);
+        return {
+            id: obj.id,
+            cells,
+            _raw: raw,
+        };
+    }, [columns, recomputeRow]);
 
     const [dataRows, setDataRows] = useState(() => data.map(rowFromApi));
     const [colFilters, setColFilters] = useState({});
@@ -38,6 +54,7 @@ export default function ExcelTable({ data, columns, onDelete, onSave, addRow, ge
     const [participantsModal, setParticipantsModal] = useState({ isOpen: false, data: [], rowId: null });
 
     const startEdit = (rowId, colIdx, val) => {
+        if (columns[colIdx - 1]?.readOnly) return;
         setEditCell({ rowId, colIdx });
         setEditValue(val);
         setTimeout(() => { editRef.current?.focus(); editRef.current?.select(); }, 0);
@@ -48,11 +65,10 @@ export default function ExcelTable({ data, columns, onDelete, onSave, addRow, ge
             if (r.id !== rowId) return r;
             const cells = [...r.cells];
             cells[colIdx] = editValue;
-            const updated = { ...r, cells };
-            // reconstruire l'objet _raw avec la nouvelle valeur
             const colKey = columns[colIdx - 1]?.key;
             const newRaw = { ...r._raw, [colKey]: editValue };
-            updated._raw = newRaw;
+            recomputeRow(newRaw, cells);
+            const updated = { ...r, cells, _raw: newRaw };
             // tracker la modification
             setPendingChanges(prev => new Map(prev).set(r.id, newRaw));
             return updated;
@@ -188,6 +204,8 @@ export default function ExcelTable({ data, columns, onDelete, onSave, addRow, ge
             if (newRaw.heur_debut !== undefined) newRaw.heur_debut = currentTime;
             keysToClear.forEach(k => { if (newRaw[k] !== undefined) newRaw[k] = ''; });
             delete newRaw.id; // supprimer l'id pour créer un nouvel enregistrement
+
+            recomputeRow(newRaw, newCells);
 
             newRows.push({
                 id: newId,
@@ -523,6 +541,7 @@ export default function ExcelTable({ data, columns, onDelete, onSave, addRow, ge
                                                 const isPos = false;
                                                 const isSel = selCell.rowId === row.id && selCell.col === ci;
                                                 const isEditing = editCell?.rowId === row.id && editCell?.colIdx === ci;
+                                                const isReadOnly = columns[ci - 1]?.readOnly;
 
                                                 return (
                                                     <td key={ci}
@@ -531,7 +550,7 @@ export default function ExcelTable({ data, columns, onDelete, onSave, addRow, ge
                                                         style={{
                                                             border: "1px solid #d0d0d0", borderTop: "none", borderLeft: "none",
                                                             height: 20, padding: isEditing ? 0 : "0 5px",
-                                                            cursor: "cell", whiteSpace: "nowrap", overflow: "hidden",
+                                                            cursor: isReadOnly ? "default" : "cell", whiteSpace: "nowrap", overflow: "hidden",
                                                             fontSize: 12, verticalAlign: "middle",
                                                             background: isSel && !isEditing ? "#e6f3f9" : isRowSel ? "#cce8f4" : ri % 2 === 1 ? "#f5fbfd" : "#fff",
                                                             outline: isSel && !isEditing ? "2px solid #2B9CB8" : undefined,
@@ -685,6 +704,7 @@ export default function ExcelTable({ data, columns, onDelete, onSave, addRow, ge
                         const cells = [...r.cells];
                         cells[colIdx] = newList;
                         const newRaw = { ...r._raw, [columns[colIdx - 1].key]: newList };
+                        recomputeRow(newRaw, cells);
                         setPendingChanges(prev => new Map(prev).set(rowId, newRaw));
                         return { ...r, cells, _raw: newRaw };
                     }));

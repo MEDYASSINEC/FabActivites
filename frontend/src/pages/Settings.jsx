@@ -236,6 +236,93 @@ function ImportSection({ onDirty }) {
 }
 
 
+function BackupSection() {
+    const [loading, setLoading] = useState(false);
+    const [status, setStatus] = useState("");
+
+    const handleBackup = async () => {
+        setLoading(true);
+        setStatus("Préparation de la sauvegarde...");
+        try {
+            const response = await api.get('/backup/download', {
+                responseType: 'blob'
+            });
+            
+            // Create a blob link to download the file
+            const blob = new Blob([response.data]);
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            
+            // Get content-disposition header to parse filename
+            const contentDisposition = response.headers['content-disposition'];
+            let filename = `backup_database_${new Date().toISOString().slice(0, 10)}.sqlite`;
+            if (contentDisposition) {
+                const match = contentDisposition.match(/filename="?([^";]+)"?/);
+                if (match && match[1]) {
+                    filename = match[1];
+                }
+            }
+            
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            link.parentNode.removeChild(link);
+            window.URL.revokeObjectURL(url);
+            
+            setStatus("✓ Sauvegarde téléchargée avec succès");
+        } catch (err) {
+            console.error(err);
+            setStatus("❌ Échec de la création de la sauvegarde");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const groupStyle = {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px',
+        padding: '15px',
+        background: '#f8f9fa',
+        borderRadius: '6px',
+        border: '1px solid #eee'
+    };
+
+    return (
+        <div style={{ background: '#fff', borderRadius: '8px', padding: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={groupStyle}>
+                <h4 style={{ margin: '0 0 5px 0', color: '#333' }}>Sauvegarder les données</h4>
+                <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>Télécharge une copie complète de la base de données actuelle dans votre dossier Téléchargements.</p>
+                <div style={{ marginTop: '10px' }}>
+                    <button 
+                        onClick={handleBackup}
+                        disabled={loading}
+                        style={{ 
+                            padding: '10px 20px', 
+                            background: '#28a745', 
+                            color: '#fff', 
+                            border: 'none', 
+                            borderRadius: '4px', 
+                            cursor: loading ? 'not-allowed' : 'pointer',
+                            fontWeight: 'bold',
+                            fontSize: '13px',
+                            opacity: loading ? 0.7 : 1,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px'
+                        }}
+                    >
+                        <span>💾</span> {loading ? 'Génération...' : 'Télécharger la sauvegarde'}
+                    </button>
+                </div>
+                {status && <p style={{ margin: '8px 0 0 0', fontSize: '12px', color: status.includes('✓') ? '#28a745' : '#dc3545', fontWeight: '500' }}>{status}</p>}
+            </div>
+        </div>
+    );
+}
+
+
 function Settings() {
     const { setDirty } = useDirtyTracker();
     const { showLeaveModal, confirmLeave, cancelLeave } = useNavigationGuard('settings');
@@ -260,6 +347,7 @@ function Settings() {
                     <AccordionItem title="Zones Occupées" content={<CrudSection title="Zones Occupées" endpoint="/zone-occupees" onDirty={(dirty) => setDirty('settings', dirty)} />} />
                     <AccordionItem title="Outillage / Machine" content={<CrudSection title="Outillage / Machine" endpoint="/outillages" onDirty={(dirty) => setDirty('settings', dirty)} />} />
                     <AccordionItem title="Import de données (Excel)" content={<ImportSection onDirty={(dirty) => setDirty('settings', dirty)} />} />
+                    <AccordionItem title="Sauvegarde de la base de données" content={<BackupSection />} />
                 </div>
             </div>
             <ConfirmLeaveModal isOpen={showLeaveModal} onConfirm={confirmLeave} onCancel={cancelLeave} />
