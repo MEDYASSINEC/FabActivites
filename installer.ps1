@@ -9,6 +9,58 @@ if (-not (Test-Path $localDir)) {
     New-Item -ItemType Directory -Path $localDir | Out-Null
 }
 
+function Download-FileWithProgress ($url, $destinationPath) {
+    try {
+        $request = [System.Net.HttpWebRequest]::Create($url)
+        $request.Method = "GET"
+        $request.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        $response = $request.GetResponse()
+        $totalBytes = $response.ContentLength
+        
+        $responseStream = $response.GetResponseStream()
+        $targetStream = [System.IO.File]::Create($destinationPath)
+        
+        $buffer = New-Object Byte[] 102400 # 100 KB buffer
+        $bytesRead = 0
+        $totalBytesRead = 0
+        
+        $progressWidth = 40
+        
+        while (($bytesRead = $responseStream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+            $targetStream.Write($buffer, 0, $bytesRead)
+            $totalBytesRead += $bytesRead
+            
+            if ($totalBytes -gt 0) {
+                $percent = ($totalBytesRead / $totalBytes) * 100
+                $completed = [int](($totalBytesRead / $totalBytes) * $progressWidth)
+                $remaining = $progressWidth - $completed
+                
+                $progressBar = "[" + ("#" * $completed) + ("." * $remaining) + "]"
+                $megabytesRead = [Math]::Round($totalBytesRead / 1MB, 1)
+                $totalMegabytes = [Math]::Round($totalBytes / 1MB, 1)
+                
+                $progressText = "`r[Téléchargement] {0} {1:N0}% ({2}/{3} MB)   " -f $progressBar, $percent, $megabytesRead, $totalMegabytes
+                Write-Host -NoNewline $progressText
+            }
+        }
+        
+        $targetStream.Close()
+        $responseStream.Close()
+        $response.Close()
+
+        if ($totalBytes -gt 0 -and $totalBytesRead -lt $totalBytes) {
+            throw "Téléchargement interrompu ou incomplet ($totalBytesRead / $totalBytes octets)."
+        }
+
+        Write-Host "`nTéléchargement terminé !`n" -ForegroundColor Green
+    }
+    catch {
+        if ($targetStream) { $targetStream.Close() }
+        if ($responseStream) { $responseStream.Close() }
+        throw $_
+    }
+}
+
 Write-Host "=========================================================" -ForegroundColor Cyan
 Write-Host "  FabActivités (CMC Tanger) - Environnement portable  " -ForegroundColor Cyan
 Write-Host "=========================================================" -ForegroundColor Cyan
@@ -20,7 +72,7 @@ if (-not (Test-Path $phpDir)) {
     $phpUrl = "https://windows.php.net/downloads/releases/archives/php-8.2.12-nts-Win32-vs16-x64.zip"
     $phpZip = Join-Path $localDir "php.zip"
     
-    Invoke-WebRequest -Uri $phpUrl -OutFile $phpZip -UseBasicParsing
+    Download-FileWithProgress -url $phpUrl -destinationPath $phpZip
     
     Write-Host "Extraction de PHP..." -ForegroundColor Yellow
     Expand-Archive -Path $phpZip -DestinationPath $phpDir -Force
@@ -56,7 +108,7 @@ if (-not (Test-Path $nodeDest)) {
     $nodeUrl = "https://nodejs.org/dist/v22.16.0/node-v22.16.0-win-x64.zip"
     $nodeZip = Join-Path $localDir "node.zip"
     
-    Invoke-WebRequest -Uri $nodeUrl -OutFile $nodeZip -UseBasicParsing
+    Download-FileWithProgress -url $nodeUrl -destinationPath $nodeZip
     
     Write-Host "Extraction de Node.js..." -ForegroundColor Yellow
     Expand-Archive -Path $nodeZip -DestinationPath $nodeRoot -Force
@@ -74,7 +126,7 @@ $composerPath = Join-Path $localDir "composer.phar"
 if (-not (Test-Path $composerPath)) {
     Write-Host "Téléchargement de Composer..." -ForegroundColor Yellow
     $composerUrl = "https://getcomposer.org/composer.phar"
-    Invoke-WebRequest -Uri $composerUrl -OutFile $composerPath -UseBasicParsing
+    Download-FileWithProgress -url $composerUrl -destinationPath $composerPath
 } else {
     Write-Host "Composer est déjà présent localement." -ForegroundColor Green
 }
