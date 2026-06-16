@@ -22,6 +22,7 @@ Route::delete('/frequentations/process/{id}', [FrequentationProcessController::c
 Route::post('/import/projects', [ExcelImportController::class, 'importProjects']);
 Route::post('/import/frequentations', [ExcelImportController::class, 'importFrequentations']);
 Route::get('/backup/download', [\App\Http\Controllers\BackupController::class, 'download']);
+Route::post('/database/clear', [\App\Http\Controllers\BackupController::class, 'clearDatabase']);
 
 
 Route::apiResource('projects', ProjectController::class);

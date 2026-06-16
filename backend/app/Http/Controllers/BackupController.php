@@ -6,6 +6,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
+use Illuminate\Support\Facades\Cache;
+
 class BackupController extends Controller
 {
     public function download()
@@ -84,5 +86,53 @@ class BackupController extends Controller
         $response->headers->set('Content-Disposition', 'attachment; filename="' . $filename . '"');
         
         return $response;
+    }
+
+    public function clearDatabase(Request $request)
+    {
+        $request->validate([
+            'confirm' => 'required|accepted',
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            $driver = DB::getDriverName();
+            
+            if ($driver === 'sqlite') {
+                DB::statement('PRAGMA foreign_keys = OFF');
+            } else {
+                DB::statement('SET FOREIGN_KEY_CHECKS=0');
+            }
+
+            DB::table('frequentation_participant')->truncate();
+            DB::table('participant_project')->truncate();
+            DB::table('occupations')->truncate();
+            DB::table('frequentations')->truncate();
+            DB::table('projects')->truncate();
+            DB::table('activites')->truncate();
+            DB::table('participants')->truncate();
+
+            if ($driver === 'sqlite') {
+                DB::statement('PRAGMA foreign_keys = ON');
+            } else {
+                DB::statement('SET FOREIGN_KEY_CHECKS=1');
+            }
+
+            DB::commit();
+
+            // Clear the cache to make sure the dashboard and charts are updated immediately
+            Cache::flush();
+
+            return response()->json([
+                'message' => 'La base de données a été réinitialisée avec succès !'
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'message' => 'Erreur lors de la réinitialisation de la base de données.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 }
