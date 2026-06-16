@@ -589,6 +589,7 @@ class ProjectSeeder extends Seeder
         ];
 
         foreach ($projects as $project) {
+            unset($project['participants']);
             $project['created_at'] = now();
             $project['updated_at'] = now();
             DB::table('projects')->insert($project);
