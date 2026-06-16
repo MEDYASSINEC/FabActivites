@@ -17,7 +17,7 @@ Write-Host "=========================================================" -Foregrou
 $phpDir = Join-Path $localDir "php"
 if (-not (Test-Path $phpDir)) {
     Write-Host "Téléchargement de PHP portable..." -ForegroundColor Yellow
-    $phpUrl = "https://windows.php.net/downloads/releases/php-8.2.12-nts-Win32-vs16-x64.zip"
+    $phpUrl = "https://windows.php.net/downloads/releases/archives/php-8.2.12-nts-Win32-vs16-x64.zip"
     $phpZip = Join-Path $localDir "php.zip"
     
     Invoke-WebRequest -Uri $phpUrl -OutFile $phpZip -UseBasicParsing
