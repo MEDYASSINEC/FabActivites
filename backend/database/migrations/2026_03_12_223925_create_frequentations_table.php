@@ -16,17 +16,15 @@ return new class extends Migration
     {
         Schema::create('frequentations', function (Blueprint $table) {
             $table->id();
-            $table->json('participants');
-            $table->string('type_activite');
+            $table->string('type_activite')->nullable();
             $table->foreignIdFor(Project::class)->nullable()->constrained()->onDelete("cascade");
             $table->foreignIdFor(Activite::class)->nullable()->constrained()->onDelete("cascade");
-            $table->foreignIdFor(Occupation::class)->nullable()->unique()->constrained()->onDelete("cascade");
             $table->string('etape')->nullable();
             $table->string('intervenant')->nullable();
             $table->string('role')->nullable();
-            $table->time('heur_debut');
-            $table->time('heur_fin');
-            $table->date('date');
+            $table->time('heur_debut')->nullable();
+            $table->time('heur_fin')->nullable();
+            $table->date('date')->nullable();
             $table->timestamps();
         });
     }

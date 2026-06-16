@@ -13,9 +13,10 @@ return new class extends Migration
     {
         Schema::create('activites', function (Blueprint $table) {
             $table->id();
-            $table->string('nom');
-            $table->string('pole');
-            $table->string('filiere');
+            $table->string('nom')->nullable();
+            $table->string('pole')->nullable();
+            $table->string('filiere')->nullable();
+            $table->string('groupe')->nullable();
             $table->timestamps();
         });
     }
