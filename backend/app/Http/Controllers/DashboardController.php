@@ -21,6 +21,22 @@ class DashboardController extends Controller
         return "(SELECT COUNT(*) FROM frequentation_participant WHERE frequentation_participant.frequentation_id = frequentations.id)";
     }
 
+    private function dateFormatExpression(string $column, string $format = '%Y-%m'): string
+    {
+        if (DB::getDriverName() === 'sqlite') {
+            return "strftime('$format', $column)";
+        }
+        return "DATE_FORMAT($column, '$format')";
+    }
+
+    private function timeDiffInMinutesExpression(string $startCol, string $endCol): string
+    {
+        if (DB::getDriverName() === 'sqlite') {
+            return "((strftime('%H', $endCol) * 60 + strftime('%M', $endCol)) - (strftime('%H', $startCol) * 60 + strftime('%M', $startCol)))";
+        }
+        return "TIMESTAMPDIFF(MINUTE, $startCol, $endCol)";
+    }
+
     /**
      * Endpoint optimisé pour récupérer tous les KPIs en une seule fois.
      */
@@ -58,7 +74,7 @@ class DashboardController extends Controller
             $dureeTotaleMinutes = (int) DB::table('frequentations')
                 ->whereDate('date', '>=', $from)
                 ->whereRaw("LOWER(type_activite) = 'formation'")
-                ->sum(DB::raw('TIMESTAMPDIFF(MINUTE, heur_debut, heur_fin)'));
+                ->sum(DB::raw($this->timeDiffInMinutesExpression('heur_debut', 'heur_fin')));
 
             // 4. frequentations
             $frequentations = DB::table('frequentations')->whereDate('date', '>=', $from)->count();
@@ -66,10 +82,10 @@ class DashboardController extends Controller
             $frequentationLastMonth = DB::table('frequentations')->whereDate('date', '>=', date('Y-m-01'))->count();
 
             // 5. Occupations
-            $occupationsMinutes = DB::table('occupations')->whereDate('date', '>=', $from)->sum(DB::raw('TIMESTAMPDIFF(MINUTE, heur_debut, heur_fin)'));
+            $occupationsMinutes = DB::table('occupations')->whereDate('date', '>=', $from)->sum(DB::raw($this->timeDiffInMinutesExpression('heur_debut', 'heur_fin')));
             $occupations = $occupationsMinutes / 60;
 
-            $occupationLastMonthMinutes = DB::table('occupations')->whereDate('date', '>=', date('Y-m-01'))->sum(DB::raw('TIMESTAMPDIFF(MINUTE, heur_debut, heur_fin)'));
+            $occupationLastMonthMinutes = DB::table('occupations')->whereDate('date', '>=', date('Y-m-01'))->sum(DB::raw($this->timeDiffInMinutesExpression('heur_debut', 'heur_fin')));
             $occupationLastMonth = $occupationLastMonthMinutes / 60;
             return response()->json([
                 'projets' => $projetsCount,
@@ -165,7 +181,7 @@ class DashboardController extends Controller
             $dureeTotaleMinutes = (int) DB::table('frequentations')
                 ->whereDate('date', '>=', $from)
                 ->whereRaw("LOWER(type_activite) = 'formation'")
-                ->sum(DB::raw('TIMESTAMPDIFF(MINUTE, heur_debut, heur_fin)'));
+                ->sum(DB::raw($this->timeDiffInMinutesExpression('heur_debut', 'heur_fin')));
 
             return response()->json([
                 'nombre_formations' => $nombreFormations,
@@ -190,12 +206,12 @@ class DashboardController extends Controller
             if ($mois) {
                 $monthsArray = is_array($mois) ? $mois : [$mois];
                 $placeholders = implode(',', array_fill(0, count($monthsArray), '?'));
-                $query->whereRaw("DATE_FORMAT(frequentations.date, '%Y-%m') IN ($placeholders)", $monthsArray);
+                $query->whereRaw($this->dateFormatExpression('frequentations.date', '%Y-%m') . " IN ($placeholders)", $monthsArray);
             }
 
             if (!$groupBy) {
                 // Par mois
-                $rows = $query->selectRaw("DATE_FORMAT(frequentations.date, '%Y-%m') as mois")
+                $rows = $query->selectRaw($this->dateFormatExpression('frequentations.date', '%Y-%m') . " as mois")
                     ->selectRaw("COUNT(DISTINCT frequentation_participant.participant_id) as total")
                     ->groupBy('mois')
                     ->orderBy('mois')
@@ -243,7 +259,7 @@ class DashboardController extends Controller
             END";
 
             $query = DB::table('projects')
-                ->selectRaw("DATE_FORMAT($dateExpression, '%Y-%m') as mois")
+                ->selectRaw($this->dateFormatExpression($dateExpression, '%Y-%m') . " as mois")
                 ->selectRaw("COALESCE(statut, 'Non défini') as statut")
                 ->whereNotNull(DB::raw($dateExpression))
                 ->whereDate(DB::raw($dateExpression), '>=', $start);
@@ -266,10 +282,10 @@ class DashboardController extends Controller
         return Cache::remember($cacheKey, 600, function () use ($from) {
             $rawFormations = DB::table('frequentations')
                 ->leftJoin('activites', 'frequentations.activite_id', '=', 'activites.id')
-                ->selectRaw("DATE_FORMAT(frequentations.date, '%Y-%m') as mois")
+                ->selectRaw($this->dateFormatExpression('frequentations.date', '%Y-%m') . " as mois")
                 ->selectRaw('COALESCE(activites.nom, "Sans nom") as formation_nom')
                 ->selectRaw('COUNT(*) as nb_seances_formation')
-                ->selectRaw('SUM(TIMESTAMPDIFF(MINUTE, frequentations.heur_debut, frequentations.heur_fin)) as duree_minutes_formation')
+                ->selectRaw('SUM(' . $this->timeDiffInMinutesExpression('frequentations.heur_debut', 'frequentations.heur_fin') . ') as duree_minutes_formation')
                 ->selectRaw('MAX(' . $this->frequentationParticipantsExpression() . ') as nb_participants_formation')
                 ->whereRaw('LOWER(frequentations.type_activite) LIKE ?', ['%formation%'])
                 ->whereDate('frequentations.date', '>=', $from)
@@ -298,7 +314,7 @@ class DashboardController extends Controller
 
         return Cache::remember($cacheKey, 600, function () use ($from, $groupBy) {
             $query = DB::table('frequentations')
-                ->selectRaw("DATE_FORMAT(frequentations.date, '%Y-%m') as mois")
+                ->selectRaw($this->dateFormatExpression('frequentations.date', '%Y-%m') . " as mois")
                 ->selectRaw('COUNT(*) as total')
                 ->whereDate('frequentations.date', '>=', $from);
 
@@ -335,7 +351,7 @@ class DashboardController extends Controller
                 ->leftJoin('activites', 'frequentations.activite_id', '=', 'activites.id')
                 ->selectRaw('COALESCE(activites.nom, "Sans nom") as nom')
                 ->selectRaw('COUNT(*) as nb_seances')
-                ->selectRaw('SUM(TIMESTAMPDIFF(MINUTE, frequentations.heur_debut, frequentations.heur_fin)) as duree_minutes')
+                ->selectRaw('SUM(' . $this->timeDiffInMinutesExpression('frequentations.heur_debut', 'frequentations.heur_fin') . ') as duree_minutes')
                 ->selectRaw('MAX(' . $this->frequentationParticipantsExpression() . ') as max_participants')
                 ->whereRaw('LOWER(frequentations.type_activite) LIKE ?', ['%formation%'])
                 ->whereDate('frequentations.date', '>=', $from)
@@ -355,10 +371,10 @@ class DashboardController extends Controller
         return Cache::remember($cacheKey, 600, function () use ($from) {
             $rows = DB::table('occupations')
                 ->join('frequentations', 'occupations.frequentation_id', '=', 'frequentations.id')
-                ->selectRaw("DATE_FORMAT(occupations.date, '%Y-%m') as mois")
+                ->selectRaw($this->dateFormatExpression('occupations.date', '%Y-%m') . " as mois")
                 ->selectRaw("COALESCE(occupations.zone_occupee, 'Non défini') as zone")
                 ->selectRaw('COUNT(occupations.id) as nb_utilisations')
-                ->selectRaw('SUM(TIMESTAMPDIFF(MINUTE, occupations.heur_debut, occupations.heur_fin)) / 60 as heures')
+                ->selectRaw('SUM(' . $this->timeDiffInMinutesExpression('occupations.heur_debut', 'occupations.heur_fin') . ') / 60 as heures')
                 ->whereDate('occupations.date', '>=', $from)
                 ->groupBy('mois', 'zone')
                 ->orderBy('mois')
@@ -375,7 +391,7 @@ class DashboardController extends Controller
 
         return Cache::remember($cacheKey, 600, function () use ($from) {
             $rows = DB::table('occupations')
-                ->selectRaw("DATE_FORMAT(date, '%Y-%m') as mois")
+                ->selectRaw($this->dateFormatExpression('date', '%Y-%m') . " as mois")
                 ->selectRaw('COUNT(id) as count')
                 ->whereDate('date', '>=', $from)
                 ->groupBy('mois')
@@ -395,10 +411,10 @@ class DashboardController extends Controller
         return Cache::remember($cacheKey, 600, function () use ($from, $machine) {
             $query = DB::table('occupations')
                 ->join('frequentations', 'occupations.frequentation_id', '=', 'frequentations.id')
-                ->selectRaw("DATE_FORMAT(occupations.date, '%Y-%m') as mois")
+                ->selectRaw($this->dateFormatExpression('occupations.date', '%Y-%m') . " as mois")
                 ->selectRaw("COALESCE(occupations.outillage_machine, 'Non défini') as machine")
                 ->selectRaw('COUNT(occupations.id) as nb_utilisations')
-                ->selectRaw('SUM(TIMESTAMPDIFF(MINUTE, occupations.heur_debut, occupations.heur_fin)) as duree_minutes')
+                ->selectRaw('SUM(' . $this->timeDiffInMinutesExpression('occupations.heur_debut', 'occupations.heur_fin') . ') as duree_minutes')
                 ->whereDate('occupations.date', '>=', $from)
                 ->groupBy('mois', 'machine')
                 ->orderBy('mois');
