@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import { api } from '../api';
 import AccordionItem from '../components/AccordionItem';
 import { useDirtyTracker } from '../context/DirtyTrackerContext';
 import { useNavigationGuard } from '../hooks/useNavigationGuard';
 import { useBeforeUnload } from '../hooks/useBeforeUnload';
 import ConfirmLeaveModal from '../components/ConfirmLeaveModal';
-
-const api = axios.create({ baseURL: import.meta.env.VITE_API_URL });
 
 function CrudSection({ title, endpoint, onDirty }) {
     const [items, setItems] = useState([]);
@@ -111,34 +109,107 @@ function CrudSection({ title, endpoint, onDirty }) {
 }
 
 function ImportSection({ onDirty }) {
-    const [projectFile, setProjectFile] = useState(null);
-    const [frequentationFile, setFrequentationFile] = useState(null);
-    const [loading, setLoading] = useState({ projects: false, frequentations: false });
-    const [status, setStatus] = useState({ projects: "", frequentations: "" });
+    const [file, setFile] = useState(null);
+    const [importProjects, setImportProjects] = useState(false);
+    const [importFrequentations, setImportFrequentations] = useState(false);
+    const [importOccupations, setImportOccupations] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [status, setStatus] = useState("");
 
-    const handleImport = async (type) => {
-        const file = type === 'projects' ? projectFile : frequentationFile;
+    const handleImport = async () => {
         if (!file) return;
+        if (!importProjects && !importFrequentations && !importOccupations) {
+            setStatus("❌ Veuillez sélectionner au moins une table à importer.");
+            return;
+        }
 
-        setLoading(prev => ({ ...prev, [type]: true }));
-        setStatus(prev => ({ ...prev, [type]: "Importation en cours..." }));
+        setLoading(true);
+        setStatus("Importation en cours... (cette opération peut prendre quelques secondes)");
 
         const formData = new FormData();
         formData.append('file', file);
+        formData.append('projects', importProjects);
+        formData.append('frequentations', importFrequentations);
+        formData.append('occupations', importOccupations);
 
         try {
-            const endpoint = type === 'projects' ? '/import/projects' : '/import/frequentations';
-            const res = await api.post(endpoint, formData, {
+            const res = await api.post('/import', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
-            setStatus(prev => ({ ...prev, [type]: `✓ ${res.data.message}` }));
+
+            const data = res.data;
+            let successMsg = `✓ ${data.message || 'Import réussi !'}`;
+
+            // Check if we received ignored occupations in the JSON response
+            if (data.ignored_occupations && data.ignored_occupations.length > 0) {
+                const ignoredCount = data.ignored_occupations.length;
+                
+                // Construct the CSV of ignored rows in Javascript
+                const headers = [
+                    'Date',
+                    'Heure Début',
+                    'Heure Fin',
+                    'Nom de l\'activité/projet',
+                    'Type_activité',
+                    'Zone occupée',
+                    'Outillage / Machine utilisée',
+                    'Raison du Rejet'
+                ];
+                
+                // Helper to escape values for CSV
+                const csvRows = [headers.join(';')];
+                for (const row of data.ignored_occupations) {
+                    const values = [
+                        row.date || '',
+                        row.heure_debut || row.heur_debut || '',
+                        row.heure_fin || row.heur_fin || '',
+                        row.nom_de_lactiviteprojet || row.nom_activite || row.projet || '',
+                        row.type_activite || '',
+                        row.zone_occupee || '',
+                        row.outillage_machine_utilisee || row.outillage_machine || '',
+                        row.raison_rejet || ''
+                    ].map(val => {
+                        const cleaned = String(val).replace(/"/g, '""');
+                        return `"${cleaned}"`;
+                    });
+                    csvRows.push(values.join(';'));
+                }
+                
+                const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+                const csvContent = csvRows.join('\n');
+                const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
+                
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.setAttribute("href", url);
+                link.setAttribute("download", "occupations_ignorees.csv");
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                successMsg += ` ${ignoredCount} lignes d'occupations ignorées (projet/activité non enregistré en BDD) ont été téléchargées dans 'occupations_ignorees.csv'.`;
+            }
+
+            setStatus(successMsg);
             onDirty(false);
         } catch (err) {
             console.error(err);
-            const msg = err.response?.data?.message || err.message || "Erreur lors de l'import";
-            setStatus(prev => ({ ...prev, [type]: `❌ ${msg}` }));
+            let msg = "Erreur lors de l'import";
+            if (err.response?.data) {
+                const data = err.response.data;
+                if (data.errors) {
+                    msg = Object.values(data.errors).flat().join(', ');
+                } else if (data.error) {
+                    msg = `${data.message || 'Erreur'} : ${data.error}`;
+                } else if (data.message) {
+                    msg = data.message;
+                }
+            } else {
+                msg = err.message || msg;
+            }
+            setStatus(`❌ ${msg}`);
         } finally {
-            setLoading(prev => ({ ...prev, [type]: false }));
+            setLoading(false);
         }
     };
 
@@ -155,81 +226,113 @@ function ImportSection({ onDirty }) {
     const groupStyle = {
         display: 'flex',
         flexDirection: 'column',
-        gap: '10px',
-        padding: '15px',
+        gap: '15px',
+        padding: '20px',
         background: '#f8f9fa',
         borderRadius: '6px',
         border: '1px solid #eee'
     };
 
+    const checkboxGroupStyle = {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px',
+        marginTop: '10px'
+    };
+
+    const checkboxLabelStyle = {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        fontSize: '13px',
+        color: '#495057',
+        cursor: 'pointer',
+        fontWeight: '500'
+    };
+
+    const isButtonDisabled = !file || loading || (!importProjects && !importFrequentations && !importOccupations);
+
     return (
         <div style={sectionStyle}>
-            {/* Import Projets */}
             <div style={groupStyle}>
-                <h4 style={{ margin: '0 0 5px 0', color: '#333' }}>Importer des Projets</h4>
-                <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>Format supporté: .xlsx, .xls, .csv (Feuille "projets")</p>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '5px' }}>
+                <h4 style={{ margin: '0 0 5px 0', color: '#333' }}>Importer des données (Excel)</h4>
+                <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>Format supporté: .xlsx, .xls, .csv</p>
+                
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '10px' }}>
                     <input 
                         type="file" 
-                        onChange={(e) => { setProjectFile(e.target.files[0]); onDirty(true); }}
+                        onChange={(e) => { setFile(e.target.files[0]); onDirty(true); }}
                         style={{ fontSize: '12px', flex: 1 }}
                         accept=".xlsx, .xls, .csv"
                     />
+                </div>
+
+                <div style={checkboxGroupStyle}>
+                    <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#666', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Tables à importer :</span>
+                    <label style={checkboxLabelStyle}>
+                        <input 
+                            type="checkbox" 
+                            checked={importProjects} 
+                            onChange={(e) => setImportProjects(e.target.checked)} 
+                        />
+                        Projets (Feuille "Liste de projets" ou "projets")
+                    </label>
+                    <label style={checkboxLabelStyle}>
+                        <input 
+                            type="checkbox" 
+                            checked={importFrequentations} 
+                            onChange={(e) => setImportFrequentations(e.target.checked)} 
+                        />
+                        Fréquentations (Feuille "Fréquentation" ou "frequentations")
+                    </label>
+                    <label style={checkboxLabelStyle}>
+                        <input 
+                            type="checkbox" 
+                            checked={importOccupations} 
+                            onChange={(e) => setImportOccupations(e.target.checked)} 
+                        />
+                        Occupations (Feuille "Occupation" ou "occupations")
+                    </label>
+                </div>
+
+                <div style={{ marginTop: '15px' }}>
                     <button 
-                        onClick={() => handleImport('projects')}
-                        disabled={!projectFile || loading.projects}
+                        onClick={handleImport}
+                        disabled={isButtonDisabled}
                         style={{ 
-                            padding: '8px 16px', 
+                            padding: '10px 20px', 
                             background: '#0061AA', 
                             color: '#fff', 
                             border: 'none', 
                             borderRadius: '4px', 
-                            cursor: projectFile && !loading.projects ? 'pointer' : 'not-allowed',
+                            cursor: isButtonDisabled ? 'not-allowed' : 'pointer',
                             fontWeight: 'bold',
-                            fontSize: '12px',
-                            opacity: projectFile && !loading.projects ? 1 : 0.6
+                            fontSize: '13px',
+                            opacity: isButtonDisabled ? 0.6 : 1,
+                            transition: 'all 0.2s ease-in-out'
                         }}
                     >
-                        {loading.projects ? 'Import...' : 'Importer Projets'}
+                        {loading ? 'Importation en cours...' : 'Lancer l\'importation'}
                     </button>
                 </div>
-                {status.projects && <p style={{ margin: '5px 0 0 0', fontSize: '12px', color: status.projects.includes('✓') ? '#28a745' : '#dc3545', fontWeight: '500' }}>{status.projects}</p>}
+
+                {status && (
+                    <p style={{ 
+                        margin: '10px 0 0 0', 
+                        fontSize: '12px', 
+                        color: status.includes('✓') ? '#28a745' : '#dc3545', 
+                        fontWeight: '500',
+                        lineHeight: 1.4
+                    }}>
+                        {status}
+                    </p>
+                )}
             </div>
 
-            {/* Import Fréquentations */}
-            <div style={groupStyle}>
-                <h4 style={{ margin: '0 0 5px 0', color: '#333' }}>Importer des Fréquentations</h4>
-                <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>Format supporté: .xlsx, .xls, .csv (Feuille "frequentations")</p>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '5px' }}>
-                    <input 
-                        type="file" 
-                        onChange={(e) => { setFrequentationFile(e.target.files[0]); onDirty(true); }}
-                        style={{ fontSize: '12px', flex: 1 }}
-                        accept=".xlsx, .xls, .csv"
-                    />
-                    <button 
-                        onClick={() => handleImport('frequentations')}
-                        disabled={!frequentationFile || loading.frequentations}
-                        style={{ 
-                            padding: '8px 16px', 
-                            background: '#0061AA', 
-                            color: '#fff', 
-                            border: 'none', 
-                            borderRadius: '4px', 
-                            cursor: frequentationFile && !loading.frequentations ? 'pointer' : 'not-allowed',
-                            fontWeight: 'bold',
-                            fontSize: '12px',
-                            opacity: frequentationFile && !loading.frequentations ? 1 : 0.6
-                        }}
-                    >
-                        {loading.frequentations ? 'Import...' : 'Importer Fréquentations'}
-                    </button>
-                </div>
-                {status.frequentations && <p style={{ margin: '5px 0 0 0', fontSize: '12px', color: status.frequentations.includes('✓') ? '#28a745' : '#dc3545', fontWeight: '500' }}>{status.frequentations}</p>}
-            </div>
-
-            <div style={{ padding: '10px', background: '#fff9db', borderRadius: '4px', border: '1px solid #fab005', fontSize: '11px', color: '#856404' }}>
-                <strong>Note:</strong> L'import des fréquentations tentera de lier chaque ligne à un projet existant par son nom. Si aucun projet ne correspond, une nouvelle activité sera créée.
+            <div style={{ padding: '12px', background: '#fff9db', borderRadius: '4px', border: '1px solid #fab005', fontSize: '11px', color: '#856404', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div><strong>Ordre d'importation automatique :</strong> L'importation s'exécute de manière sécurisée dans l'ordre de dépendance des données : <strong>Projets ➔ Fréquentations ➔ Occupations</strong>.</div>
+                <div><strong>Note Import Fréquentations :</strong> L'import des fréquentations liera chaque ligne à un projet existant (par son nom). Si aucun projet ne correspond, une nouvelle activité sera créée.</div>
+                <div style={{ borderTop: '1px solid #ffe3e3', paddingTop: '8px', marginTop: '4px' }}><strong>Note Import Occupations :</strong> L'import des occupations requiert que le projet ou l'activité soit déjà enregistré(e) en base de données. Les lignes d'occupations non reconnues seront ignorées et téléchargées dans un fichier CSV de rejet. Les occupations sont rattachées automatiquement aux fréquentations du même projet/activité et du même jour.</div>
             </div>
         </div>
     );

@@ -1,2 +1,3 @@
 # Ignorer le dossier de l'environnement portable local
 .local_env/
+*.xlsx

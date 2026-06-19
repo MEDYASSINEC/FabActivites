@@ -100,31 +100,36 @@ L'importation de données en masse s'effectue depuis la page **Paramètres** dan
 
 Pour que l'importation fonctionne correctement, les fichiers Excel doivent comporter des en-têtes spécifiques (sur la première ligne) correspondant aux champs ci-dessous.
 
-### 📋 Importation des Projets (Feuille "projets")
+### 📋 Importation des Projets (Feuille "Liste de projets")
 
-Le système lit les colonnes suivantes :
+Le système recherche spécifiquement la feuille nommée **`Liste de projets`** (les noms alternatifs comme `projets` ou `Projets` sont également acceptés). Le système lit les colonnes suivantes :
 
 | En-têtes Excel reconnus (Insensible à la casse) | Description / Type de donnée | Obligatoire / Optionnel |
 | :--- | :--- | :--- |
 | `intitule_projet` ou `nom_du_projet` | Nom du projet | **Obligatoire** |
+| `responsable_de_projet` ou `responsable_projet` ou `responsable` | Nom du responsable du projet (ne doit pas être vide) | **Obligatoire** (Requis par la base de données) |
 | `source_du_projet` ou `source` | Source / Partenaire du projet | Optionnel |
 | `statut` | Statut (`Prévu`, `En cours`, `Réalisé`, `Suspendu`, `Abandonné`) | Optionnel (Défaut: `En cours`) |
 | `etape` | Étape du projet | Optionnel |
-| `responsable_projet` ou `responsable` | Nom du responsable du projet | Optionnel |
 | `pole` | Pôle associé au projet | Optionnel |
 | `filiere` | Filière de formation associée | Optionnel |
 | `groupe` | Groupe associé | Optionnel |
-| `participants` | Liste de participants séparés par des virgules (ex: `Stagiaire A, Stagiaire B`) | Optionnel |
 | `date_debut` ou `dt_debut` | Date de début du projet | Optionnel |
 | `date_fin_prevue` ou `dt_fn_prevu` | Date de fin prévisionnelle | Optionnel |
 | `date_fin_reelle` ou `dt_fn_reel` | Date de fin réelle | Optionnel |
+| `date_suspension` ou `dt_suspension` | Date de suspension du projet | Optionnel |
+| `date_abandon` ou `dt_abandon` | Date d'abandon du projet | Optionnel |
 | `remarques` | Remarques / Observations | Optionnel |
 
 ---
 
-### 🕒 Importation des Fréquentations (Feuille "frequentations")
+### 🕒 Importation des Fréquentations & Occupations (Feuilles "Fréquentation" et "Occupation")
 
-Le système lit les colonnes suivantes et lie automatiquement l'occupation correspondante :
+Le système lit automatiquement les deux feuilles présentes dans le fichier Excel :
+1. La feuille **`Fréquentation`** (noms alternatifs : `frequentations`, `Frequentations`) : contient les passages et participants.
+2. La feuille **`Occupation`** (noms alternatifs : `occupations`, `Occupations`) : contient les détails d'utilisation des machines et des zones du Fablab, qui sont automatiquement rattachés à la fréquentation correspondante par date et nom d'activité.
+
+#### En-têtes lus dans la feuille "Fréquentation" :
 
 | En-têtes Excel reconnus (Insensible à la casse) | Description / Type de donnée | Obligatoire / Optionnel |
 | :--- | :--- | :--- |
@@ -133,18 +138,28 @@ Le système lit les colonnes suivantes et lie automatiquement l'occupation corre
 | `nom_de_lactiviteprojet` ou `nom_activite` ou `projet` | Nom de l'activité ou du projet lié | **Obligatoire** |
 | `heure_fin` ou `heur_fin` | Heure de départ au format `HH:MM` (ex: `12:30`) | Optionnel |
 | `type_activite` | Type d'activité (ex: `Formation`, `Atelier`, `Visite`) | Optionnel (Défaut: `Autre`) |
-| `etape` | Étape ou séance | Optionnel |
-| `intervenant` ou `responsable` | Intervenant / Responsable de la séance | Optionnel |
+| `etapeseance` ou `etape_seance` ou `etape` | Étape ou séance (lit la colonne `Etape/Séance` de l'Excel) | Optionnel |
+| `intervenantresponsable` ou `intervenant_responsable` ou `intervenant` ou `responsable` | Responsable de la séance (lit la colonne `Intervenant/Responsable`) | Optionnel |
 | `role` | Rôle de l'intervenant | Optionnel |
-| `participants` | Liste de participants séparés par des virgules | Optionnel |
-| `zone_occupee` | Nom de la zone du Fablab occupée | Optionnel |
-| `outillage_machine` | Outillage ou machine utilisée | Optionnel |
-| `pole` | Pôle associé (utilisé pour créer l'activité si elle n'existe pas déjà) | Optionnel |
-| `filiere` | Filière associée (utilisé pour créer l'activité si elle n'existe pas déjà) | Optionnel |
-| `groupe` | Groupe associé (utilisé pour créer l'activité si elle n'existe pas déjà) | Optionnel |
+| `nom_participants` ou `participants` | Liste de participants séparés par des virgules (enregistre et lie les élèves en base) | Optionnel |
+| `pole` | Pôle associé (utilisé pour créer l'activité si elle n'existe pas) | Optionnel |
+| `filiere` | Filière associée (utilisé pour créer l'activité si elle n'existe pas) | Optionnel |
+| `groupe` | Groupe associé (utilisé pour créer l'activité si elle n'existe pas) | Optionnel |
+
+#### En-têtes lus dans la feuille "Occupation" :
+
+| En-têtes Excel reconnus (Insensible à la casse) | Description / Type de donnée | Obligatoire / Optionnel |
+| :--- | :--- | :--- |
+| `date` | Date de l'occupation | **Obligatoire** |
+| `nom_de_lactiviteprojet` ou `nom_activite` ou `projet` | Nom de l'activité ou projet lié | **Obligatoire** |
+| `zone_occupee` | Nom de la zone occupée (ex: `Zone impression 3D`) | Optionnel |
+| `outillage_machine_utilisee` ou `outillage_machine` | Machine ou outil utilisé (lit la colonne `Outillage / Machine utilisée`) | Optionnel |
+| `heure_debut` ou `heur_debut` | Heure de début d'utilisation | Optionnel |
+| `heure_fin` ou `heur_fin` | Heure de fin d'utilisation | Optionnel |
 
 > [!TIP]
-> **Liaison Intelligente des Projets :** Lors de l'import des fréquentations, le système effectue une recherche intelligente (insensible à la casse) sur le nom de l'activité/projet. S'il correspond à un projet existant dans la base de données, la fréquentation y sera liée. S'il n'y a pas de correspondance, une nouvelle activité autonome est créée automatiquement.
+> **Liaison Intelligente des Projets :** Lors de l'import, le système effectue une recherche intelligente (insensible à la casse) sur le nom de l'activité/projet. S'il correspond à un projet existant dans la base de données, la fréquentation y sera liée. S'il n'y a pas de correspondance, une nouvelle activité autonome est créée automatiquement.
+> Les occupations sont également associées en temps réel à la bonne fiche de fréquentation de la même journée.
 
 ---
 

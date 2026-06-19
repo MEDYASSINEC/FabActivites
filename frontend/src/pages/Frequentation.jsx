@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { useSearchParams } from 'react-router';
-import axios from 'axios';
+import { api } from '../api';
 import ExcelTable from "../components/ExcelTable";
 import AddRowModal from "../components/form";
 import TableSkeleton from "../components/TableSkeleton";
@@ -11,10 +11,6 @@ import { useDirtyTracker } from '../context/DirtyTrackerContext';
 import { useNavigationGuard } from '../hooks/useNavigationGuard';
 import { useBeforeUnload } from '../hooks/useBeforeUnload';
 import ConfirmLeaveModal from '../components/ConfirmLeaveModal';
-
-const api = axios.create({
-    baseURL: import.meta.env.VITE_API_URL,
-});
 
 function Frequentations() {
     const [frequentations, setFrequentations] = useState([]);

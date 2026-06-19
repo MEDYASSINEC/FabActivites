@@ -21,8 +21,10 @@ Route::delete('/frequentations/process/{id}', [FrequentationProcessController::c
 // Excel Import Routes
 Route::post('/import/projects', [ExcelImportController::class, 'importProjects']);
 Route::post('/import/frequentations', [ExcelImportController::class, 'importFrequentations']);
+Route::post('/import/occupations', [ExcelImportController::class, 'importOccupations']);
 Route::get('/backup/download', [\App\Http\Controllers\BackupController::class, 'download']);
 Route::post('/database/clear', [\App\Http\Controllers\BackupController::class, 'clearDatabase']);
+Route::post('/import', [\App\Http\Controllers\ExcelImportController::class, 'importUnified']);
 
 
 Route::apiResource('projects', ProjectController::class);

@@ -103,8 +103,6 @@ class BackupController extends Controller
         }
 
         try {
-            DB::beginTransaction();
-
             DB::table('frequentation_participant')->truncate();
             DB::table('participant_project')->truncate();
             DB::table('occupations')->truncate();
@@ -113,8 +111,6 @@ class BackupController extends Controller
             DB::table('activites')->truncate();
             DB::table('participants')->truncate();
 
-            DB::commit();
-
             // Clear the cache to make sure the dashboard and charts are updated immediately
             Cache::flush();
 
@@ -122,7 +118,6 @@ class BackupController extends Controller
                 'message' => 'La base de données a été réinitialisée avec succès !'
             ]);
         } catch (\Exception $e) {
-            DB::rollBack();
             return response()->json([
                 'message' => 'Erreur lors de la réinitialisation de la base de données.',
                 'error' => $e->getMessage()

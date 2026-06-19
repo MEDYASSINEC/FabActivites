@@ -1,20 +1,23 @@
 import { useEffect, useState, useMemo, useRef } from "react";
-import { useNavigate } from 'react-router';
-import axios from 'axios';
+import { useNavigate } from "react-router-dom";
+import { api } from '../api';
 import domtoimage from 'dom-to-image-more';
-import {
-    PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend,
-    BarChart, Bar, XAxis, YAxis, CartesianGrid,
-    AreaChart, Area
-} from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend, BarChart, Bar } from 'recharts';
+import { getWeekRange, getDefaultBilanMonth, getAvailableMonths, STATUS_COLORS, COLORS } from '../utils/dashboardUtils';
+import { useStatsCalculations } from '../hooks/useStatsCalculations';
+import { useRepartitionData } from '../hooks/useRepartitionData';
+import { useComparaisonData } from '../hooks/useComparaisonData';
+import { useBilanData } from '../hooks/useBilanData';
+import BilanModal from '../components/dashboard/BilanModal';
+import PoleModal from '../components/dashboard/PoleModal';
+import ComparaisonModal from '../components/dashboard/ComparaisonModal';
+import RepartitionModal from '../components/dashboard/RepartitionModal';
 
 // ============================================================================
 // CONSTANTS & CONFIGURATION
 // ============================================================================
 
-const api = axios.create({
-    baseURL: import.meta.env.VITE_API_URL,
-});
+
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#e53e3e', '#d69e2e', '#38b2ac', '#805ad5', '#ed64a6'];
 

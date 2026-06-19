@@ -1,15 +1,11 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import { api } from "../api";
 import AddRowModal from "../components/form";
 import OccupationTable from "../components/occupationTable";
 import { useDirtyTracker } from "../context/DirtyTrackerContext";
 import { useNavigationGuard } from "../hooks/useNavigationGuard";
 import { useBeforeUnload } from "../hooks/useBeforeUnload";
 import ConfirmLeaveModal from "../components/ConfirmLeaveModal";
-
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
-});
 
 const OccupationsTable = () => {
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
