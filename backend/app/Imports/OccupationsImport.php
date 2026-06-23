@@ -226,10 +226,14 @@ class OccupationsOnlySheetImport implements OnEachRow, WithHeadingRow
             }
         }
 
-        // 3. If neither project nor activity is registered in DB, IGNORE this row!
+        // 3. If neither project nor activity is registered in DB, create a new activity
         if (!$projectId && !$activiteId) {
-            $this->mainImporter->addIgnoredRow($rowArr, "Projet/Activité non enregistré(e) en BDD");
-            return;
+            $activiteId = DB::table('activites')->insertGetId([
+                'nom'        => $projectName,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            OccupationsImport::$activitesCache[strtolower(trim($projectName))] = $activiteId;
         }
 
         $typeActivite = $rowArr['type_activite'] ?? 'Autre';
