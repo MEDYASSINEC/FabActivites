@@ -97,6 +97,8 @@ if (-not (Test-Path $phpDir)) {
     $iniContent = $iniContent -replace ';extension=sqlite3', 'extension=sqlite3'
     $iniContent = $iniContent -replace ';extension=zip', 'extension=zip'
     $iniContent = $iniContent -replace 'memory_limit = 128M', 'memory_limit = 512M'
+    $iniContent = $iniContent -replace 'post_max_size = 8M', 'post_max_size = 64M'
+    $iniContent = $iniContent -replace 'upload_max_filesize = 2M', 'upload_max_filesize = 64M'
     
     Set-Content -Path $iniFile -Value $iniContent
 } else {
