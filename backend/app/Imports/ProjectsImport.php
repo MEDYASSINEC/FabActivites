@@ -81,13 +81,12 @@ class ProjectsSheetImport implements ToModel, WithHeadingRow
         $dt_suspension = $this->transformDate($row['date_suspension'] ?? $row['dt_suspension'] ?? null);
         $dt_abandon = $this->transformDate($row['date_abandon'] ?? $row['dt_abandon'] ?? null);
 
-        $intitule = trim($row['intitule_projet'] ?? $row['nom_du_projet'] ?? 'Sans nom');
+        $intitule = trim($row['intitule_projet'] ?? $row['nom_du_projet'] ?? '');
+        if (empty($intitule)) $intitule = '-';
 
         // Validation to prevent SQL integrity errors and show a clean message
         $responsable = trim($row['responsable_de_projet'] ?? $row['responsable_projet'] ?? $row['responsable'] ?? '');
-        if (empty($responsable)) {
-            throw new \Exception("Le responsable de projet est obligatoire pour le projet '$intitule'.");
-        }
+        if (empty($responsable)) $responsable = '-';
 
         return Project::updateOrCreate(
             ['intitule_projet' => $intitule],

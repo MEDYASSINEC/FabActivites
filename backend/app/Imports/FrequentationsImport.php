@@ -265,27 +265,26 @@ class FrequentationsSheetImport implements OnEachRow, WithHeadingRow
 
         // Resolve project or activity
         $projectName = trim($row['nom_de_lactiviteprojet'] ?? $row['nom_activite'] ?? $row['projet'] ?? '');
+        if (empty($projectName)) $projectName = '-';
         $projectId = null;
         $activiteId = null;
 
-        if ($projectName !== '') {
-            $projectNameKey = strtolower($projectName);
+        $projectNameKey = strtolower($projectName);
 
-            if (isset(FrequentationsImport::$projectResolutionCache[$projectNameKey])) {
-                $projectId = FrequentationsImport::$projectResolutionCache[$projectNameKey];
-            } else {
-                $project = $this->projects->first(function ($p) use ($projectName) {
-                    return stripos($p->intitule_projet, $projectName) !== false
-                        || stripos($projectName, $p->intitule_projet) !== false;
-                });
+        if (isset(FrequentationsImport::$projectResolutionCache[$projectNameKey])) {
+            $projectId = FrequentationsImport::$projectResolutionCache[$projectNameKey];
+        } else {
+            $project = $this->projects->first(function ($p) use ($projectName) {
+                return stripos($p->intitule_projet, $projectName) !== false
+                    || stripos($projectName, $p->intitule_projet) !== false;
+            });
 
-                $projectId = $project ? $project->id : null;
-                FrequentationsImport::$projectResolutionCache[$projectNameKey] = $projectId;
-            }
+            $projectId = $project ? $project->id : null;
+            FrequentationsImport::$projectResolutionCache[$projectNameKey] = $projectId;
+        }
 
-            if (!$projectId) {
-                $activiteId = $this->getActiviteId($projectName, $row);
-            }
+        if (!$projectId) {
+            $activiteId = $this->getActiviteId($projectName, $row);
         }
 
         $typeActivite = $row['type_activite'] ?? 'Autre';

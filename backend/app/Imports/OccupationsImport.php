@@ -199,13 +199,9 @@ class OccupationsOnlySheetImport implements OnEachRow, WithHeadingRow
 
         // Resolve project or activity
         $projectName = trim($rowArr['nom_de_lactiviteprojet'] ?? $rowArr['nom_activite'] ?? $rowArr['projet'] ?? '');
+        if (empty($projectName)) $projectName = '-';
         $projectId = null;
         $activiteId = null;
-
-        if ($projectName === '') {
-            $this->mainImporter->addIgnoredRow($rowArr, "Nom de projet/activité manquant");
-            return;
-        }
 
         $projectNameKey = strtolower($projectName);
 
