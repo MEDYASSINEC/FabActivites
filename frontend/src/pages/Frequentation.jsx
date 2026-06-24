@@ -4,7 +4,6 @@ import axios from 'axios';
 import ExcelTable from "../components/ExcelTable";
 import AddRowModal from "../components/form";
 import TableSkeleton from "../components/TableSkeleton";
-import TableEmpty from "../components/TableEmpty";
 import TableError from "../components/TableError";
 import Toast from "../components/Toast";
 import { POLES } from '../constants/poles';
@@ -21,8 +20,6 @@ function Frequentations() {
     const [frequentations, setFrequentations] = useState([]);
     const [projects, setProjects] = useState([]);
     const [typeActivites, setTypeActivites] = useState([]);
-    const [zoneOccupees, setZoneOccupees] = useState([]);
-    const [outillages, setOutillages] = useState([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [formData, setFormData] = useState({});
     const [searchParams] = useSearchParams();
@@ -34,11 +31,9 @@ function Frequentations() {
     const { showLeaveModal, confirmLeave, cancelLeave } = useNavigationGuard('frequentations');
     useBeforeUnload('frequentations');
 
-    // Colonnes aplaties depuis frequentation + activite + occupation
     const COLUMNS = [
-        // ── Fréquentation ──
         { key: "date", label: "Date", type: 'date' },
-        { key: "type_activite", label: "Type activité", type: 'select', options: typeActivites.map(t => ({ value: t.name, label: t.name })) },
+        { key: "type_activite", label: "Type activité", type: 'select', options: ["--- Autre ---", ...typeActivites.map(t => t.name)] },
         { key: "activite_nom", label: "Projet/Activité" },
         { key: "etape", label: "Etape/Séance" },
         { key: "intervenant", label: "Intervenant/Résponsable" },
@@ -48,38 +43,27 @@ function Frequentations() {
         { key: "activite_groupe", label: "Groupe" },
         { key: "heur_debut", label: "Heure début", type: 'time' },
         { key: "heur_fin", label: "Heure fin", type: 'time' },
-        { key: "nb_participants", label: "Nombre des participants" },
+        { key: "participants", label: "Participants" },
     ];
 
     useEffect(() => {
-        const controller = new AbortController();
-
         const fetchData = async () => {
             setLoading(true);
-            setError(null);
             try {
-                const [frequentationsRes, projectsRes, taRes] = await Promise.all([
-                    api.get("/frequentations/process", { signal: controller.signal }),
-                    api.get("/projects", { signal: controller.signal }),
-                    api.get("/type-activites", { signal: controller.signal }),
+                const [freqRes, projRes, taRes] = await Promise.all([
+                    api.get("/frequentations/process"),
+                    api.get("/projects"),
+                    api.get("/type-activites"),
                 ]);
-                console.log("Fréquentations reçues:", frequentationsRes.data);
-                setFrequentations(Array.isArray(frequentationsRes.data) ? frequentationsRes.data : frequentationsRes.data.data || []);
-                setProjects(Array.isArray(projectsRes.data) ? projectsRes.data : projectsRes.data.data || []);
-                setTypeActivites(Array.isArray(taRes.data) ? taRes.data : taRes.data.data || []);
+                setFrequentations(freqRes.data);
+                setProjects(projRes.data);
+                const uniqueTypes = Array.from(new Map((taRes.data || []).map(t => [t.name, t])).values());
+                setTypeActivites(uniqueTypes);
             } catch (err) {
-                if (err.code === 'ERR_CANCELED') return;
-                const errorMsg = err.response?.data?.message || err.message || "Erreur de chargement des données";
-                setError(errorMsg);
-                console.error("Erreur chargement:", err);
-            } finally {
-                setLoading(false);
-            }
+                setError(err.response?.data?.message || err.message || "Erreur de chargement");
+            } finally { setLoading(false); }
         };
-
         fetchData();
-
-        return () => controller.abort();
     }, []);
 
     const showToast = (msg) => {
@@ -87,136 +71,11 @@ function Frequentations() {
         setTimeout(() => setToast(t => ({ ...t, visible: false })), 2000);
     };
 
-    const refetchData = async () => {
-        setLoading(true);
-        setError(null);
-        try {
-            const [frequentationsRes, projectsRes, taRes] = await Promise.all([
-                api.get("/frequentations/process"),
-                api.get("/projects"),
-                api.get("/type-activites"),
-            ]);
-            setFrequentations(Array.isArray(frequentationsRes.data) ? frequentationsRes.data : frequentationsRes.data.data || []);
-            setProjects(Array.isArray(projectsRes.data) ? projectsRes.data : projectsRes.data.data || []);
-            setTypeActivites(Array.isArray(taRes.data) ? taRes.data : taRes.data.data || []);
-        } catch (err) {
-            const errorMsg = err.response?.data?.message || err.message || "Erreur de chargement";
-            setError(errorMsg);
-            console.error("Erreur chargement:", err);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // Set default values when modal opens
-    useEffect(() => {
-        if (isModalOpen) {
-            const now = new Date();
-            const dateStr = now.toISOString().split('T')[0];
-            const timeStr = now.toTimeString().split(' ')[0].substring(0, 5);
-            setFormData({
-                date: dateStr,
-                heur_debut: timeStr,
-                type_activite: 'Formation', // Default as per request order?
-                activite_nom: '',
-            });
-        }
-    }, [isModalOpen]);
-
-    // Handle conditional logic
-    useEffect(() => {
-        if (formData.activite_nom && formData.activite_nom !== 'autre') {
-            const selectedProject = projects.find(p => p.id == formData.activite_nom);
-            if (selectedProject) {
-                setFormData(prev => ({
-                    ...prev,
-                    activite_pole: selectedProject.pole || '',
-                    activite_filiere: selectedProject.filiere || '',
-                    activite_groupe: selectedProject.groupe || '',
-                }));
-            }
-        } else if (formData.activite_nom === 'autre') {
-            setFormData(prev => ({
-                ...prev,
-                activite_pole: '',
-                activite_filiere: '',
-                activite_groupe: '',
-                project_id: null,
-            }));
-        }
-    }, [formData.activite_nom]);
-
-    const isProjectSelected = formData.activite_nom && formData.activite_nom !== 'autre' && !isNaN(formData.activite_nom);
-    const FREQUENTATION_FIELDS = [
-        { key: "date", label: "Date", required: false, type: 'date' },
-        {
-            key: "type_activite", label: "Type activité", required: false, type: 'select',
-            options: typeActivites.map(t => ({ value: t.name, label: t.name }))
-        },
-        {
-            key: "activite_nom", label: "Projet / Activité", required: false, type: 'select',
-            options: [
-                { label: '--- Autre Activité ---', value: 'autre' },
-                ...projects.map(p => ({ label: p.intitule_projet, value: p.id }))
-            ]
-        },
-        { key: "activite_pole", label: "Pôle", required: false, type: 'datalist', options: POLES, disabled: isProjectSelected },
-        { key: "activite_filiere", label: "Filière", required: false, disabled: isProjectSelected },
-        { key: "activite_groupe", label: "Groupe", required: false, disabled: isProjectSelected },
-        { key: "etape", label: "Etape/Séance", required: false },
-        { key: "intervenant", label: "Intervenant/Responsable", required: false },
-        { key: "role", label: "Rôle", required: false },
-        { key: "heur_debut", label: "Heure début", required: false, type: 'time' },
-        { key: "heur_fin", label: "Heure fin", required: false, type: 'time' },
-        { key: "nb_participants", label: "Nombre des participants", required: false, type: 'number' },
-    ];
-
-    const onSave = async (modifiedRows) => {
-        try {
-            await Promise.all(
-                modifiedRows.map(row => {
-                    const payload = {
-                        type_activite: row.type_activite,
-                        project_id: row.project_id,
-                        etape: row.etape,
-                        intervenant: row.intervenant,
-                        role: row.role,
-                        heur_debut: row.heur_debut,
-                        heur_fin: row.heur_fin,
-                        date: row.date,
-                        nb_participants: row.nb_participants,
-                        activite: {
-                            nom: row.activite_nom,
-                            pole: row.activite_pole,
-                            filiere: row.activite_filiere,
-                            groupe: row.activite_groupe,
-                        },
-                        participants: Array.isArray(row.participants) ? row.participants : [],
-                    };
-
-                    // Si c'est une nouvelle ligne (dupliquée), faire un POST
-                    if (row._is_new) {
-                        return api.post("/frequentations/process", payload);
-                    }
-                    // Sinon, faire un PUT (modification)
-                    return api.put(`/frequentations/process/${row.id}`, payload);
-                })
-            );
-            showToast(`✓ ${modifiedRows.length} modification(s) sauvegardée(s)`);
-            setDirty('frequentations', false);
-            await refetchData();
-        } catch (err) {
-            const errorMsg = err.response?.data?.message || "Erreur lors de la sauvegarde";
-            showToast(`❌ ${errorMsg}`);
-            console.error("Erreur save:", err);
-        }
-    };
-
     const handleAddSubmit = async (data) => {
         try {
             const projectForActivite = data.activite_nom !== 'autre' ? projects.find(p => p.id == data.activite_nom) : null;
             const payload = {
-                type_activite: data.type_activite,
+                type_activite: data.type_activite === 'autre' ? data.custom_type : data.type_activite,
                 project_id: data.activite_nom === 'autre' ? null : data.activite_nom,
                 etape: data.etape,
                 intervenant: data.intervenant,
@@ -230,145 +89,137 @@ function Frequentations() {
                     filiere: data.activite_filiere || projectForActivite?.filiere || '',
                     groupe: data.activite_groupe || projectForActivite?.groupe || '',
                 },
-                nb_participants: data.nb_participants,
+                participants: data.participants || [],
             };
 
-            await api.post("/frequentations/process", payload);
-            showToast("✓ Fréquentation ajoutée avec succès");
-            setDirty('frequentations', false);
+            const res = await api.post("/frequentations/process", payload);
+            setFrequentations(prev => [res.data.data, ...prev]);
+            showToast("✓ Ajouté");
             setIsModalOpen(false);
-            await refetchData();
-        } catch (err) {
-            const errorMsg = err.response?.data?.message || "Erreur lors de l'ajout de la fréquentation";
-            showToast(`❌ ${errorMsg}`);
-        }
+            setDirty('frequentations', false);
+        } catch (err) { showToast(`❌ Erreur`); }
     };
 
-    // If 'autre' is selected, we should probably add a field for the custom name
-    // I'll adjust the fields list
-    const finalFields = [...FREQUENTATION_FIELDS];
-    if (formData.activite_nom === 'autre') {
-        finalFields.splice(3, 0, { key: "custom_activite_nom", label: "Nom de l'activité", required: true });
-    }
+    const onSave = async (modifiedRows) => {
+        try {
+            const results = await Promise.all(modifiedRows.map(row => {
+                const payload = {
+                    ...row,
+                    project_id: row.project_id || row.projet_id,
+                    activite: { nom: row.activite_nom, pole: row.activite_pole, filiere: row.activite_filiere, groupe: row.activite_groupe },
+                    participants: row.participants || [],
+                };
+                return row._is_new ? api.post("/frequentations/process", payload) : api.put(`/frequentations/process/${row.id}`, payload);
+            }));
+
+            setFrequentations(prev => {
+                let next = [...prev];
+                results.forEach(res => {
+                    const updated = res.data.data;
+                    const idx = next.findIndex(f => f.id === updated.id);
+                    if (idx !== -1) next[idx] = updated;
+                    else next = [updated, ...next];
+                });
+                return next;
+            });
+
+            showToast(`✓ Sauvegardé`);
+            setDirty('frequentations', false);
+        } catch (err) { showToast(`❌ Erreur`); }
+    };
 
     const onDelete = async (ids) => {
         try {
-            await Promise.all(
-                ids.map(id => api.delete(`/frequentations/process/${id}`))
-            );
-            showToast(`✓ ${ids.length} fréquentation(s) supprimée(s)`);
+            await Promise.all(ids.map(id => api.delete(`/frequentations/process/${id}`)));
+            setFrequentations(prev => prev.filter(f => !ids.includes(f.id)));
+            showToast(`✓ Supprimé`);
             setDirty('frequentations', false);
-            await refetchData();
-        } catch (err) {
-            const errorMsg = err.response?.data?.message || "Erreur lors de la suppression";
-            showToast(`❌ ${errorMsg}`);
-            console.error("Erreur delete:", err);
-        }
+        } catch (err) { showToast(`❌ Erreur`); }
     };
-
-
-    const setFrequentationFormData = (updater) => {
-        setDirty('frequentations', true);
-        setFormData((prev) => (typeof updater === 'function' ? updater(prev) : updater));
-    };
-
-    const activeSessions = frequentations.filter(f => !f.heur_fin);
-    const [isSessionsExpanded, setIsSessionsExpanded] = useState(false);
 
     const handleFinishSession = async (session) => {
-        const now = new Date();
-        const timeStr = now.toTimeString().split(' ')[0].substring(0, 5);
-
+        const timeStr = new Date().toTimeString().split(' ')[0].substring(0, 5);
         try {
-            await api.put(`/frequentations/process/${session.id}`, {
-                ...session,
-                heur_fin: timeStr,
-                activite: {
-                    nom: session.activite_nom,
-                    pole: session.activite_pole,
-                    filiere: session.activite_filiere,
-                    groupe: session.activite_groupe,
-                },
+            const res = await api.put(`/frequentations/process/${session.id}`, {
+                ...session, heur_fin: timeStr,
+                activite: { nom: session.activite_nom, pole: session.activite_pole, filiere: session.activite_filiere, groupe: session.activite_groupe }
             });
+            setFrequentations(prev => prev.map(f => f.id === res.data.data.id ? res.data.data : f));
             showToast("✓ Session terminée");
-            setDirty('frequentations', false);
-            await refetchData();
-        } catch (err) {
-            const errorMsg = err.response?.data?.message || "Erreur lors de la terminaison de la session";
-            showToast(`❌ ${errorMsg}`);
-        }
+        } catch (err) { showToast(`❌ Erreur`); }
     };
 
-    // Construire initialFilters pour ExcelTable
-    const initialFilters = useMemo(() => {
-        const filterParam = searchParams.get('filter');
+    const isProjectSelected = formData.activite_nom && formData.activite_nom !== 'autre' && !isNaN(formData.activite_nom);
+    const FREQUENTATION_FIELDS = [
+        { key: "date", label: "Date", type: 'date' },
+        { 
+            key: "type_activite", label: "Type activité", type: 'select', 
+            options: [{ label: "--- Autre ---", value: "autre" }, ...typeActivites.map(t => ({ value: t.name, label: t.name }))] 
+        },
+        ...(formData.type_activite === 'autre' ? [{ key: "custom_type", label: "Précisez le type", required: true }] : []),
+        { 
+            key: "activite_nom", label: "Projet / Activité", type: 'select', 
+            options: [{ label: '--- Autre ---', value: 'autre' }, ...projects.map(p => ({ label: p.intitule_projet, value: p.id }))] 
+        },
+        ...(formData.activite_nom === 'autre' ? [{ key: "custom_activite_nom", label: "Nom activité", required: true }] : []),
+        { key: "activite_pole", label: "Pôle", type: 'datalist', options: POLES, disabled: isProjectSelected },
+        { key: "activite_filiere", label: "Filière", disabled: isProjectSelected },
+        { key: "activite_groupe", label: "Groupe", disabled: isProjectSelected },
+        { key: "etape", label: "Etape/Séance" },
+        { key: "intervenant", label: "Intervenant" },
+        { key: "role", label: "Rôle" },
+        { key: "heur_debut", label: "Heure début", type: 'time' },
+        { key: "heur_fin", label: "Heure fin", type: 'time' },
+        { 
+            key: "participants", 
+            label: "Participants", 
+            type: isProjectSelected ? 'checkboxes' : 'list',
+            options: isProjectSelected ? (projects.find(p => p.id == formData.activite_nom)?.participants || []) : undefined
+        },
+    ];
 
-        if (filterParam === 'active') {
-            const emptyValues = new Set();
-            frequentations.forEach(f => {
-                if (!f.heur_fin) emptyValues.add(f.heur_fin ?? '');
-            });
-            return { heur_fin: [...emptyValues] };
+    useEffect(() => {
+        if (isModalOpen) {
+            const now = new Date();
+            setFormData({ date: now.toISOString().split('T')[0], heur_debut: now.toTimeString().split(' ')[0].substring(0, 5), type_activite: 'Formation', activite_nom: '' });
         }
+    }, [isModalOpen]);
 
-        if (filterParam === 'week') {
-            const from = searchParams.get('from');
-            const to = searchParams.get('to');
-            if (!from || !to) return null;
-
-            // Collecter toutes les dates de la semaine présentes dans les données
-            const weekDates = new Set(
-                frequentations
-                    .filter(f => f.date && f.date >= from && f.date <= to)
-                    .map(f => f.date)
-            );
-            return weekDates.size > 0 ? { date: [...weekDates] } : null;
+    useEffect(() => {
+        if (formData.activite_nom && formData.activite_nom !== 'autre') {
+            const p = projects.find(x => x.id == formData.activite_nom);
+            if (p) setFormData(prev => ({ ...prev, activite_pole: p.pole || '', activite_filiere: p.filiere || '', activite_groupe: p.groupe || '' }));
         }
+    }, [formData.activite_nom, projects]);
 
-        return null;
-    }, [searchParams, frequentations]);
+    const activeSessions = useMemo(() => frequentations.filter(f => !f.heur_fin), [frequentations]);
+    const [isExpanded, setIsExpanded] = useState(false);
 
-    if (loading) {
-        return <TableSkeleton columns={12} rows={8} />;
-    }
-
-    if (error) {
-        return <TableError message={error} onRetry={refetchData} />;
-    }
+    if (loading) return <TableSkeleton columns={12} rows={8} />;
+    if (error) return <TableError message={error} onRetry={() => window.location.reload()} />;
 
     return (
         <>
             {activeSessions.length > 0 && (
-                <div style={{ margin: '20px', background: '#fff9f0', border: '1px solid #ffd8a8', borderRadius: '12px', overflow: 'scroll', position: 'absolute', bottom: '20px', zIndex: '1000', maxHeight: '70vh', minWidth: '40vw' }}>
-                    <div
-                        onClick={() => setIsSessionsExpanded(!isSessionsExpanded)}
-                        style={{ padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', background: '#fff5e6' }}
-                    >
-                        <h3 style={{ margin: 0, color: '#d9480f', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#ff922b', animation: 'pulse 1.5s infinite' }}></span>
+                <div style={{ margin: '20px', background: '#fff9f0', border: '1px solid #ffd8a8', borderRadius: '12px', overflow: 'hidden', position: 'fixed', bottom: '20px', right: '20px', zIndex: '1000', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', maxWidth: '400px' }}>
+                    <div onClick={() => setIsExpanded(!isExpanded)} style={{ padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', background: '#fff5e6' }}>
+                        <h3 style={{ margin: 0, color: '#d9480f', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ff922b', animation: 'pulse 1.5s infinite' }}></span>
                             Sessions Actives ({activeSessions.length})
                         </h3>
-                        <span style={{ fontSize: '12px', color: '#d9480f', fontWeight: 'bold' }}>{isSessionsExpanded ? 'Réduire' : 'Développer'}</span>
+                        <span style={{ fontSize: '12px', color: '#d9480f' }}>{isExpanded ? '▼' : '▲'}</span>
                     </div>
-                    {isSessionsExpanded && (
-                        <div style={{ padding: '15px' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                {activeSessions.map(session => (
-                                    <div key={session.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '20px', padding: '10px 15px', background: '#fff', borderRadius: '8px', border: '1px solid #ffe8cc' }}>
-                                        <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-                                            <span style={{ fontWeight: '600', minWidth: '150px' }}>{session.activite_nom}</span>
-                                            <span style={{ fontSize: '13px', color: '#666' }}>Début: {session.heur_debut}</span>
-                                        </div>
-                                        <button
-                                            onClick={() => handleFinishSession(session)}
-                                            className="btn-primary-solid"
-                                            style={{ padding: '6px 15px', fontSize: '12px', background: '#fd7e14' }}
-                                        >
-                                            Terminer
-                                        </button>
+                    {isExpanded && (
+                        <div style={{ padding: '10px', maxHeight: '300px', overflowY: 'auto' }}>
+                            {activeSessions.map(s => (
+                                <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px', borderBottom: '1px solid #ffe8cc' }}>
+                                    <div style={{ fontSize: '13px' }}>
+                                        <div style={{ fontWeight: '600' }}>{s.activite_nom}</div>
+                                        <div style={{ color: '#666' }}>{s.heur_debut}</div>
                                     </div>
-                                ))}
-                            </div>
+                                    <button onClick={() => handleFinishSession(s)} style={{ padding: '4px 10px', fontSize: '11px', background: '#fd7e14', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Finir</button>
+                                </div>
+                            ))}
                         </div>
                     )}
                 </div>
@@ -381,23 +232,22 @@ function Frequentations() {
                 onSave={onSave}
                 addRow={() => setIsModalOpen(true)}
                 getRowClassName={(row) => !row.heur_fin ? 'row-orange-light' : ''}
-                initialFilters={initialFilters}
                 onDirtyChange={(dirty) => setDirty('frequentations', dirty)}
                 onDuplicate={true}
-                emptyMessage="Aucune fréquentation enregistrée."
             />
 
             <AddRowModal
-                isOpen={isModalOpen}
-                onClose={() => { setIsModalOpen(false); setDirty('frequentations', false); }}
-                onSubmit={handleAddSubmit}
-                title="Ajouter une Nouvelle Fréquentation"
-                fields={finalFields}
-                externalFormData={formData}
-                setExternalFormData={setFrequentationFormData}
+                isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}
+                onSubmit={handleAddSubmit} title="Ajouter Fréquentation"
+                fields={FREQUENTATION_FIELDS} externalFormData={formData}
+                setExternalFormData={(u) => setFormData(p => typeof u === 'function' ? u(p) : u)}
             />
             <ConfirmLeaveModal isOpen={showLeaveModal} onConfirm={confirmLeave} onCancel={cancelLeave} />
             <Toast msg={toast.msg} visible={toast.visible} />
+            <style>{`
+                @keyframes pulse { 0% { transform: scale(0.95); opacity: 0.7; } 50% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(0.95); opacity: 0.7; } }
+                .row-orange-light { background-color: #fff9f0 !important; }
+            `}</style>
         </>
     );
 }

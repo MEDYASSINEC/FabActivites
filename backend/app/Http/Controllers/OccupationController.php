@@ -33,21 +33,21 @@ class OccupationController extends Controller
     {
         try {
             $validated = $request->validate([
-                'zone_occupee'      => 'required|string',
-                'outillage_machine' => 'required|string',
+                'zone_occupee'      => 'nullable|string',
+                'outillage_machine' => 'nullable|string',
                 'heur_debut'        => 'required',
                 'heur_fin'          => 'nullable',
                 'frequentation_id'  => 'required|integer|exists:frequentations,id',
-                'participants'      => 'nullable|array',
+                'date'              => 'nullable|date',
             ]);
 
             $occupation = Occupation::create([
-                'zone_occupee'      => $validated['zone_occupee'],
-                'outillage_machine' => $validated['outillage_machine'],
+                'zone_occupee'      => $validated['zone_occupee'] ?? null,
+                'outillage_machine' => $validated['outillage_machine'] ?? null,
                 'heur_debut'        => $validated['heur_debut'],
-                'heur_fin'          => $validated['heur_fin'],
+                'heur_fin'          => $validated['heur_fin'] ?? null,
                 'frequentation_id'  => $validated['frequentation_id'],
-                'participants'      => $validated['participants'] ?? [],
+                'date'              => $validated['date'] ?? null,
             ]);
 
             return response()->json([
@@ -80,15 +80,22 @@ class OccupationController extends Controller
         try {
             $occupation = Occupation::findOrFail($id);
             $validated = $request->validate([
-                'zone_occupee'      => 'sometimes|string',
-                'outillage_machine' => 'sometimes|string',
+                'zone_occupee'      => 'nullable|string',
+                'outillage_machine' => 'nullable|string',
                 'heur_debut'        => 'sometimes',
-                'heur_fin'          => 'sometimes',
+                'heur_fin'          => 'nullable',
                 'frequentation_id'  => 'sometimes|integer|exists:frequentations,id',
-                'participants'      => 'nullable|array',
+                'date'              => 'nullable|date',
             ]);
 
-            $occupation->update($validated);
+            $occupation->update([
+                'zone_occupee'      => $validated['zone_occupee'] ?? $occupation->zone_occupee,
+                'outillage_machine' => $validated['outillage_machine'] ?? $occupation->outillage_machine,
+                'heur_debut'        => $validated['heur_debut'] ?? $occupation->heur_debut,
+                'heur_fin'          => $validated['heur_fin'] ?? $occupation->heur_fin,
+                'frequentation_id'  => $validated['frequentation_id'] ?? $occupation->frequentation_id,
+                'date'              => $validated['date'] ?? $occupation->date,
+            ]);
 
             return response()->json([
                 'message'    => 'Occupation mise à jour avec succès.',

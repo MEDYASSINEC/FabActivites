@@ -13,21 +13,37 @@ function parseNum(s) {
 
 // ── Main Component ────────────────────────────────────────────
 export default function ExcelTable({ data, columns, onDelete, onSave, addRow, getRowClassName, initialFilters, onDuplicate, onDirtyChange, emptyMessage = "Aucune donnée trouvée" }) {
-    const rowFromApi = useCallback((obj) => ({
-        id: obj.id,
-        cells: ["", ...columns.map(c => obj[c.key] ?? "")],
-        _raw: obj,
-    }), [columns]);
+    const recomputeRow = useCallback((raw, cells) => {
+        columns.forEach((col, idx) => {
+            if (col.compute) {
+                const cellIdx = idx + 1;
+                const computedVal = col.compute(raw);
+                cells[cellIdx] = computedVal;
+                raw[col.key] = computedVal;
+            }
+        });
+    }, [columns]);
+
+    const rowFromApi = useCallback((obj) => {
+        const cells = ["", ...columns.map(c => obj[c.key] ?? "")];
+        const raw = { ...obj };
+        recomputeRow(raw, cells);
+        return {
+            id: obj.id,
+            cells,
+            _raw: raw,
+        };
+    }, [columns, recomputeRow]);
 
     const [dataRows, setDataRows] = useState(() => data.map(rowFromApi));
     const [colFilters, setColFilters] = useState({});
     const [colSorts, setColSorts] = useState({});
-    const [selCell, setSelCell] = useState({ row: 1, col: 1 });
+    const [selCell, setSelCell] = useState({ rowId: null, col: 1 });
     const [selRows, setSelRows] = useState(new Set()); // selected row ids
     const [popup, setPopup] = useState(null);
     const [toast, setToast] = useState({ msg: "", visible: false });
     const toastTimer = useRef(null);
-    const [editCell, setEditCell] = useState(null); // { row, col } or null
+    const [editCell, setEditCell] = useState(null); // { rowId, colIdx } or null
     const [editValue, setEditValue] = useState("");
     const editRef = useRef(null);
     const [pendingChanges, setPendingChanges] = useState(new Map()); // id -> row modifiée
@@ -37,22 +53,22 @@ export default function ExcelTable({ data, columns, onDelete, onSave, addRow, ge
     const [dragStart, setDragStart] = useState({ x: 0, scrollLeft: 0 });
     const [participantsModal, setParticipantsModal] = useState({ isOpen: false, data: [], rowId: null });
 
-    const startEdit = (ri, ci, val) => {
-        setEditCell({ row: ri, col: ci });
+    const startEdit = (rowId, colIdx, val) => {
+        if (columns[colIdx - 1]?.readOnly) return;
+        setEditCell({ rowId, colIdx });
         setEditValue(val);
         setTimeout(() => { editRef.current?.focus(); editRef.current?.select(); }, 0);
     };
 
-    const commitEdit = (ri, ci) => {
-        setDataRows(prev => prev.map((r, idx) => {
-            if (idx !== ri - 2) return r;
+    const commitEdit = (rowId, colIdx) => {
+        setDataRows(prev => prev.map((r) => {
+            if (r.id !== rowId) return r;
             const cells = [...r.cells];
-            cells[ci] = editValue;
-            const updated = { ...r, cells };
-            // reconstruire l'objet _raw avec la nouvelle valeur
-            const colKey = columns[ci - 1]?.key;
+            cells[colIdx] = editValue;
+            const colKey = columns[colIdx - 1]?.key;
             const newRaw = { ...r._raw, [colKey]: editValue };
-            updated._raw = newRaw;
+            recomputeRow(newRaw, cells);
+            const updated = { ...r, cells, _raw: newRaw };
             // tracker la modification
             setPendingChanges(prev => new Map(prev).set(r.id, newRaw));
             return updated;
@@ -189,6 +205,8 @@ export default function ExcelTable({ data, columns, onDelete, onSave, addRow, ge
             keysToClear.forEach(k => { if (newRaw[k] !== undefined) newRaw[k] = ''; });
             delete newRaw.id; // supprimer l'id pour créer un nouvel enregistrement
 
+            recomputeRow(newRaw, newCells);
+
             newRows.push({
                 id: newId,
                 cells: newCells,
@@ -296,14 +314,26 @@ export default function ExcelTable({ data, columns, onDelete, onSave, addRow, ge
             if (m[e.key]) {
                 e.preventDefault();
                 const [dr, dc] = m[e.key];
-                setSelCell(s => ({ row: Math.max(1, s.row + dr), col: Math.max(1, Math.min(columns.length, s.col + dc)) }));
+                
+                // Navigation clavier simplifiée : on change juste la colonne si on utilise RowId
+                // Pour naviguer verticalement avec RowId, il faudrait trouver l'ID du voisin dans visibleRows
+                const currentIdx = visibleRows.findIndex(r => r.id === selCell.rowId);
+                const nextIdx = Math.max(0, Math.min(visibleRows.length - 1, currentIdx + dr));
+                const nextRowId = visibleRows[nextIdx]?.id;
+                
+                setSelCell(s => ({ 
+                    rowId: nextRowId || s.rowId, 
+                    col: Math.max(1, Math.min(columns.length, s.col + dc)) 
+                }));
             }
             if (e.key === "F2") {
                 // entrer en mode édition sur la cellule sélectionnée
-                const vis = visibleRows;
-                if (selCell.row >= 2 && selCell.row <= vis.length + 1) {
-                    const val = vis[selCell.row - 2]?.cells[selCell.col] || "";
-                    startEdit(selCell.row, selCell.col, val);
+                if (selCell.rowId) {
+                    const row = visibleRows.find(r => r.id === selCell.rowId);
+                    if (row) {
+                        const val = row.cells[selCell.col] || "";
+                        startEdit(selCell.rowId, selCell.col, val);
+                    }
                 }
             }
         };
@@ -460,7 +490,7 @@ export default function ExcelTable({ data, columns, onDelete, onSave, addRow, ge
                                             height: 20, padding: "0 5px", fontSize: 12, verticalAlign: "middle",
                                             cursor: "pointer", userSelect: "none",
                                             position: "sticky", top: 0, zIndex: 10,
-                                            outline: selCell.row === 1 && selCell.col === ci ? "2px solid #2B9CB8" : undefined,
+                                            outline: selCell.rowId === null && selCell.col === ci ? "2px solid #2B9CB8" : undefined,
                                             outlineOffset: -2,
                                             padding: '2px 15px'
                                         }}
@@ -509,17 +539,18 @@ export default function ExcelTable({ data, columns, onDelete, onSave, addRow, ge
                                                 const isPct = false;
                                                 const isNeg = false;
                                                 const isPos = false;
-                                                const isSel = selCell.row === ri + 2 && selCell.col === ci;
-                                                const isEditing = editCell?.row === ri + 2 && editCell?.col === ci;
+                                                const isSel = selCell.rowId === row.id && selCell.col === ci;
+                                                const isEditing = editCell?.rowId === row.id && editCell?.colIdx === ci;
+                                                const isReadOnly = columns[ci - 1]?.readOnly;
 
                                                 return (
                                                     <td key={ci}
-                                                        onClick={() => setSelCell({ row: ri + 2, col: ci })}
-                                                        onDoubleClick={() => startEdit(ri + 2, ci, val)}
+                                                        onClick={() => setSelCell({ rowId: row.id, col: ci })}
+                                                        onDoubleClick={() => startEdit(row.id, ci, val)}
                                                         style={{
                                                             border: "1px solid #d0d0d0", borderTop: "none", borderLeft: "none",
                                                             height: 20, padding: isEditing ? 0 : "0 5px",
-                                                            cursor: "cell", whiteSpace: "nowrap", overflow: "hidden",
+                                                            cursor: isReadOnly ? "default" : "cell", whiteSpace: "nowrap", overflow: "hidden",
                                                             fontSize: 12, verticalAlign: "middle",
                                                             background: isSel && !isEditing ? "#e6f3f9" : isRowSel ? "#cce8f4" : ri % 2 === 1 ? "#f5fbfd" : "#fff",
                                                             outline: isSel && !isEditing ? "2px solid #2B9CB8" : undefined,
@@ -537,16 +568,16 @@ export default function ExcelTable({ data, columns, onDelete, onSave, addRow, ge
                                                                         list={`datalist-${ci}`}
                                                                         value={editValue}
                                                                         onChange={e => setEditValue(e.target.value)}
-                                                                        onBlur={() => commitEdit(ri + 2, ci)}
+                                                                        onBlur={() => commitEdit(row.id, ci)}
                                                                         onKeyDown={e => {
                                                                             if (e.key === "Enter") {
-                                                                                commitEdit(ri + 2, ci);
+                                                                                commitEdit(row.id, ci);
                                                                             } else if (e.key === "Tab") {
                                                                                 e.preventDefault();
-                                                                                commitEdit(ri + 2, ci);
+                                                                                commitEdit(row.id, ci);
                                                                                 const nextCol = ci + 1;
                                                                                 setSelCell(s => ({ ...s, col: Math.min(columns.length, s.col + 1) }));
-                                                                                if (nextCol <= columns.length) startEdit(ri + 2, nextCol, row.cells[nextCol] || "");
+                                                                                if (nextCol <= columns.length) startEdit(row.id, nextCol, row.cells[nextCol] || "");
                                                                             } else if (e.key === "Escape") {
                                                                                 cancelEdit();
                                                                             }
@@ -576,16 +607,16 @@ export default function ExcelTable({ data, columns, onDelete, onSave, addRow, ge
                                                                     type={columns[ci - 1]?.type === 'date' ? 'date' : columns[ci - 1]?.type === 'time' ? 'time' : 'text'}
                                                                     value={editValue}
                                                                     onChange={e => setEditValue(e.target.value)}
-                                                                    onBlur={() => commitEdit(ri + 2, ci)}
+                                                                    onBlur={() => commitEdit(row.id, ci)}
                                                                     onKeyDown={e => {
                                                                         if (e.key === "Enter") {
-                                                                            commitEdit(ri + 2, ci);
+                                                                            commitEdit(row.id, ci);
                                                                         } else if (e.key === "Tab") {
                                                                             e.preventDefault();
-                                                                            commitEdit(ri + 2, ci);
+                                                                            commitEdit(row.id, ci);
                                                                             const nextCol = ci + 1;
                                                                             setSelCell(s => ({ ...s, col: Math.min(columns.length, s.col + 1) }));
-                                                                            if (nextCol <= columns.length) startEdit(ri + 2, nextCol, row.cells[nextCol] || "");
+                                                                            if (nextCol <= columns.length) startEdit(row.id, nextCol, row.cells[nextCol] || "");
                                                                         } else if (e.key === "Escape") {
                                                                             cancelEdit();
                                                                         }
@@ -599,7 +630,7 @@ export default function ExcelTable({ data, columns, onDelete, onSave, addRow, ge
                                                                         background: "#fff",
                                                                         color: isNeg ? "#c0392b" : isPos ? "#27ae60" : isPct ? "#0061AA" : "#1a1a1a",
                                                                         fontWeight: isPct ? 600 : 400,
-                                                                        textAlign: columns[ci - 1]?.type === 'date' ? "left" : (!isNaN(parseFloat((val || "").replace(/\s/g, ""))) ? "right" : "left"),
+                                                                        textAlign: columns[ci - 1]?.type === 'date' ? "left" : (!isNaN(parseFloat(String(val || "").replace(/\s/g, ""))) ? "right" : "left"),
                                                                         boxSizing: "border-box",
                                                                     }}
                                                                 />
@@ -673,6 +704,7 @@ export default function ExcelTable({ data, columns, onDelete, onSave, addRow, ge
                         const cells = [...r.cells];
                         cells[colIdx] = newList;
                         const newRaw = { ...r._raw, [columns[colIdx - 1].key]: newList };
+                        recomputeRow(newRaw, cells);
                         setPendingChanges(prev => new Map(prev).set(rowId, newRaw));
                         return { ...r, cells, _raw: newRaw };
                     }));

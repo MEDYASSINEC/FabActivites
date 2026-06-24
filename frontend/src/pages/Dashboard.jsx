@@ -90,7 +90,7 @@ const useStatsCalculations = (projects, frequentations) => {
             if (!f.date) return;
             const month = f.date.substring(0, 7);
             if (month >= startMonth && month <= endMonth) {
-                months[month] = (months[month] || 0) + (f.nb_participants || 0);
+                months[month] = (months[month] || 0) + Number(f.nb_participants || 0);
             }
         });
         return Object.entries(months).sort().map(([name, value]) => ({ name, value }));
@@ -148,7 +148,7 @@ const useStatsCalculations = (projects, frequentations) => {
                 const d = new Date(f.date);
                 return d >= monday && d <= sunday;
             })
-            .reduce((acc, f) => acc + (f.nb_participants || 0), 0);
+            .reduce((acc, f) => acc + Number(f.nb_participants || 0), 0);
     }, [frequentations]);
 
     const activeSessionsCount = useMemo(
@@ -165,6 +165,8 @@ const useStatsCalculations = (projects, frequentations) => {
         poleFiliereGrouped,
         weeklyParticipantsCount,
         activeSessionsCount,
+        formationYearData: monthlyDataFull,
+        allAvailableMonths: Object.keys(Object.fromEntries(frequentations.map(f => [f.date?.substring(0, 7), 1]).filter(([m]) => m))).sort().reverse()
     };
 };
 
@@ -701,6 +703,10 @@ function Dashboard() {
     const [repartitionModal, setRepartitionModal] = useState(false);
     const [bilanMonth, setBilanMonth] = useState(getDefaultBilanMonth);
 
+    // Beneficiaires Detail State
+    const [benefViewMode, setBenefViewMode] = useState('month'); // 'month', 'pole', 'type'
+    const [benefMonth, setBenefMonth] = useState('all'); // 'all' ou 'YYYY-MM'
+
     // Data fetching
     const [projects, setProjects] = useState([]);
     const [frequentations, setFrequentations] = useState([]);
@@ -895,9 +901,13 @@ function Dashboard() {
 
             {/* Modals */}
             {expandedModal === 'frequentation' && (
-                <FrequentationModal
+                <BeneficiaireModal
                     onClose={() => setExpandedModal(null)}
-                    data={stats.monthlyDataFull}
+                    frequentations={frequentations}
+                    viewMode={benefViewMode}
+                    setViewMode={setBenefViewMode}
+                    selectedMonth={benefMonth}
+                    setSelectedMonth={setBenefMonth}
                 />
             )}
 
@@ -947,25 +957,157 @@ function Dashboard() {
 // MODAL COMPONENTS
 // ============================================================================
 
-const FrequentationModal = ({ onClose, data }) => {
+const BeneficiaireModal = ({ onClose, frequentations, viewMode, setViewMode, selectedMonth, setSelectedMonth }) => {
+    const formationYearStart = useMemo(() => {
+        const now = new Date();
+        const year = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+        return `${year}-09`;
+    }, []);
+
+    const monthsList = useMemo(() => {
+        const months = {};
+        frequentations.forEach(f => {
+            if (!f.date) return;
+            const m = f.date.substring(0, 7);
+            if (m >= formationYearStart) {
+                const d = new Date(m + "-01");
+                months[m] = d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+            }
+        });
+        return Object.entries(months).sort().reverse();
+    }, [frequentations, formationYearStart]);
+
+    const filteredData = useMemo(() => {
+        let list = frequentations.filter(f => f.date && f.date.substring(0, 7) >= formationYearStart);
+        if (selectedMonth !== 'all') {
+            list = list.filter(f => f.date.substring(0, 7) === selectedMonth);
+        }
+        return list;
+    }, [frequentations, selectedMonth, formationYearStart]);
+
+    const chartData = useMemo(() => {
+        if (viewMode === 'month') {
+            const months = {};
+            // Initialiser les mois de l'année de formation
+            const [y, m] = formationYearStart.split('-').map(Number);
+            for (let i = 0; i < 12; i++) {
+                const d = new Date(y, m - 1 + i, 1);
+                const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                months[key] = 0;
+            }
+            filteredData.forEach(f => {
+                const m = f.date.substring(0, 7);
+                if (months[m] !== undefined) months[m] += Number(f.nb_participants || 0);
+            });
+            return Object.entries(months).sort().map(([name, value]) => ({ name, value }));
+        } else if (viewMode === 'pole') {
+            const poles = {};
+            filteredData.forEach(f => {
+                const p = f.activite_pole || "Autre";
+                poles[p] = (poles[p] || 0) + Number(f.nb_participants || 0);
+            });
+            return Object.entries(poles).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value }));
+        } else {
+            const types = {};
+            filteredData.forEach(f => {
+                const t = f.type_activite || "Autre";
+                types[t] = (types[t] || 0) + Number(f.nb_participants || 0);
+            });
+            return Object.entries(types).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value }));
+        }
+    }, [filteredData, viewMode, formationYearStart]);
 
     return (
-        <ExpandModal title="Évolution de la Fréquentation — Année complète" onClose={onClose}>
-            <ResponsiveContainer width="100%" height={420}>
-                <AreaChart data={data}>
-                    <defs>
-                        <linearGradient id="colorValFull" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#3182ce" stopOpacity={0.15} />
-                            <stop offset="95%" stopColor="#3182ce" stopOpacity={0} />
-                        </linearGradient>
-                    </defs>
-                    <CartGrid vertical={false} strokeDasharray="3 3" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#718096' }} dy={10} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#718096' }} />
-                    <Tooltip contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }} />
-                    <Area type="monotone" dataKey="value" stroke="#3182ce" strokeWidth={3} fillOpacity={1} fill="url(#colorValFull)" />
-                </AreaChart>
-            </ResponsiveContainer>
+        <ExpandModal title="Analyse des Bénéficiaires" onClose={onClose}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '15px' }}>
+                <div style={{ display: 'flex', borderRadius: '12px', overflow: 'hidden', border: '1px solid #e2e8f0', background: '#fff' }}>
+                    {[
+                        { id: 'month', label: 'Évolution', icon: '📈' },
+                        { id: 'pole', label: 'Par Pôle', icon: '🏢' },
+                        { id: 'type', label: 'Par Type', icon: '⚙️' }
+                    ].map(btn => (
+                        <button
+                            key={btn.id}
+                            onClick={() => setViewMode(btn.id)}
+                            style={{
+                                padding: '10px 20px', border: 'none', cursor: 'pointer',
+                                fontWeight: '600', fontSize: '13px', transition: 'all 0.2s',
+                                background: viewMode === btn.id ? '#3182ce' : 'transparent',
+                                color: viewMode === btn.id ? '#fff' : '#4a5568',
+                                borderRight: btn.id !== 'type' ? '1px solid #e2e8f0' : 'none',
+                                display: 'flex', alignItems: 'center', gap: '8px'
+                            }}
+                        >
+                            <span>{btn.icon}</span> {btn.label}
+                        </button>
+                    ))}
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '13px', color: '#718096', fontWeight: '600' }}>Période :</span>
+                    <select
+                        value={selectedMonth}
+                        onChange={e => setSelectedMonth(e.target.value)}
+                        style={{
+                            padding: '10px 16px', borderRadius: '12px', border: '1px solid #e2e8f0',
+                            fontSize: '14px', color: '#2d3748', background: '#fff', outline: 'none',
+                            fontWeight: '600', cursor: 'pointer', minWidth: '180px'
+                        }}
+                    >
+                        <option value="all">Toute l'année</option>
+                        {monthsList.map(([val, label]) => (
+                            <option key={val} value={val}>{label}</option>
+                        ))}
+                    </select>
+                </div>
+            </div>
+
+            <div style={{ background: '#fff', borderRadius: '16px', padding: '20px', border: '1px solid #edf2f7' }}>
+                <ResponsiveContainer width="100%" height={400}>
+                    {viewMode === 'month' ? (
+                        <AreaChart data={chartData}>
+                            <defs>
+                                <linearGradient id="colorValAdv" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="#3182ce" stopOpacity={0.2} />
+                                    <stop offset="95%" stopColor="#3182ce" stopOpacity={0} />
+                                </linearGradient>
+                            </defs>
+                            <CartGrid vertical={false} strokeDasharray="3 3" />
+                            <XAxis
+                                dataKey="name"
+                                axisLine={false}
+                                tickLine={false}
+                                tick={{ fontSize: 11, fill: '#718096' }}
+                                tickFormatter={(tick) => {
+                                    const d = new Date(tick + "-01");
+                                    return d.toLocaleDateString('fr-FR', { month: 'short' });
+                                }}
+                            />
+                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#718096' }} />
+                            <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} />
+                            <Area type="monotone" dataKey="value" stroke="#3182ce" strokeWidth={4} fillOpacity={1} fill="url(#colorValAdv)" />
+                        </AreaChart>
+                    ) : (
+                        <BarChart data={chartData} layout={viewMode === 'pole' ? 'vertical' : 'horizontal'}>
+                            <CartGrid strokeDasharray="3 3" horizontal={viewMode !== 'pole'} vertical={viewMode === 'pole'} />
+                            {viewMode === 'pole' ? (
+                                <>
+                                    <XAxis type="number" hide />
+                                    <YAxis dataKey="name" type="category" width={140} axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#4a5568' }} />
+                                    <Bar dataKey="value" fill="#4fd1c5" radius={[0, 6, 6, 0]} barSize={25} />
+                                </>
+                            ) : (
+                                <>
+                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#4a5568' }} />
+                                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#718096' }} />
+                                    <Bar dataKey="value" fill="#63b3ed" radius={[6, 6, 0, 0]} barSize={40} />
+                                </>
+                            )}
+                            <Tooltip cursor={{ fill: 'rgba(49,130,206,0.05)' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} />
+                        </BarChart>
+                    )}
+                </ResponsiveContainer>
+            </div>
         </ExpandModal>
     );
 };

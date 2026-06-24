@@ -16,7 +16,7 @@ class Project extends Model
         'pole',
         'filiere',
         'groupe',
-        'participants',
+        'groupe',
         'dt_debut',
         'dt_fn_prevu',
         'dt_suspension',
@@ -25,11 +25,11 @@ class Project extends Model
         'remarques',
     ];
 
-    protected $casts = [
-        'participants' => 'array',
-    ];
-
     public function frequent() {
         return $this->hasMany(Frequentation::class);
+    }
+
+    public function participants() {
+        return $this->belongsToMany(Participant::class);
     }
 }
